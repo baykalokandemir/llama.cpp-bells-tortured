@@ -1384,7 +1384,7 @@ void llm_graph_input_ple::set_input(const llama_ubatch * ubatch) {
     static const bool ple_trace = getenv("LLAMA_PLE_TRACE") != nullptr;
     if (ple_trace && n_tokens <= 8 && ubatch->token) {
         for (int64_t i = 0; i < n_tokens; ++i) {
-            fprintf(stderr, "ple_trace ctx=%p pos=%d tok=%d prev=", (const void *) mctx, (int) ubatch->pos[i], (int) ubatch->token[i]);
+            fprintf(stderr, "ple_trace ctx=%p pos=%d tok=%d prev=", (const void *) &pmodel, (int) ubatch->pos[i], (int) ubatch->token[i]);
             for (int64_t j = 0; j < n_prev; ++j) {
                 fprintf(stderr, "%s%d", j ? "," : "", (int) prev[i*n_prev + j]);
             }

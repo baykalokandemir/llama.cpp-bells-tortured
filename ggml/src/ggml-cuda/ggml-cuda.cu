@@ -2630,6 +2630,36 @@ static bool ggml_cuda_graph_check_compability(ggml_cgraph * cgraph) {
     return use_cuda_graph;
 }
 
+// GGML_CUDA_GRAPH_STATS=1: count how each graph_compute call ran and print a summary line
+// every 2000 calls. eager = ran without a CUDA graph; capture = (re)recorded; replay = reused.
+struct ggml_cuda_graph_stats {
+    std::atomic<int64_t> calls{0}, eager{0}, capture{0}, replay{0}, warmup_reset{0}, uid_reuse{0};
+};
+static ggml_cuda_graph_stats g_cuda_graph_stats;
+static bool ggml_cuda_graph_stats_enabled() {
+    static const bool on = getenv("GGML_CUDA_GRAPH_STATS") != nullptr;
+    return on;
+}
+static void ggml_cuda_graph_stats_tick(bool use_cuda_graph, bool update_required) {
+    if (!ggml_cuda_graph_stats_enabled()) {
+        return;
+    }
+    auto & st = g_cuda_graph_stats;
+    const int64_t n = ++st.calls;
+    if (!use_cuda_graph) {
+        st.eager++;
+    } else if (update_required) {
+        st.capture++;
+    } else {
+        st.replay++;
+    }
+    if (n % 2000 == 0) {
+        fprintf(stderr, "cuda_graph_stats: calls=%lld eager=%lld capture=%lld replay=%lld warmup_reset=%lld uid_reuse=%lld\n",
+            (long long) n, (long long) st.eager.load(), (long long) st.capture.load(), (long long) st.replay.load(),
+            (long long) st.warmup_reset.load(), (long long) st.uid_reuse.load());
+    }
+}
+
 static const void * ggml_cuda_graph_get_key(ggml_cgraph * cgraph) {
     return cgraph->nodes[0];
 }
@@ -2643,6 +2673,7 @@ static bool ggml_cuda_graph_update_required(ggml_backend_cuda_context * cuda_ctx
     if (cgraph->uid != 0 &&
         cgraph->uid == graph->uid) {
         GGML_LOG_DEBUG("CUDA Graph id %zu reused\n", cgraph->uid);
+        g_cuda_graph_stats.uid_reuse++;
         GGML_ASSERT((int)graph->node_props.size() == cgraph->n_nodes);
         return false;
     }
@@ -4494,6 +4525,7 @@ static enum ggml_status ggml_backend_cuda_graph_compute(ggml_backend_t backend, 
                     // Properties changed - reset warmup, execute directly until stable again
                     graph->warmup_complete = false;
                     GGML_LOG_DEBUG("%s: CUDA graph warmup reset\n", __func__);
+                    g_cuda_graph_stats.warmup_reset++;
                 } else {
                     use_cuda_graph = true;
                     cuda_graph_update_required = graph->instance == nullptr;
@@ -4513,6 +4545,7 @@ static enum ggml_status ggml_backend_cuda_graph_compute(ggml_backend_t backend, 
         CUDA_CHECK(cudaStreamBeginCapture(cuda_ctx->stream(), cudaStreamCaptureModeRelaxed));
     }
 
+    ggml_cuda_graph_stats_tick(use_cuda_graph, cuda_graph_update_required);
     ggml_cuda_graph_evaluate_and_capture(cuda_ctx, cgraph, use_cuda_graph, cuda_graph_update_required, graph_key);
 
     return GGML_STATUS_SUCCESS;

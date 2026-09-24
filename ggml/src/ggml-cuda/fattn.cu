@@ -1,3 +1,4 @@
+#include <atomic>
 #include "common.cuh"
 #include "fattn-common.cuh"
 #include "fattn-mma-f16.cuh"
@@ -134,10 +135,23 @@ bool ggml_cuda_flash_attn_ext_mma_f16_shall_use_sparse(const int cc, const ggml_
 
     const int64_t n_gather = (ncols1 == 1 ? Q->ne[1] : ncols1) * (int64_t) n_kv_max;
 
-    return GGML_CUDA_CC_IS_NVIDIA(cc) && turing_mma_available(cc) &&
+    const bool res = GGML_CUDA_CC_IS_NVIDIA(cc) && turing_mma_available(cc) &&
         mask != nullptr && n_kv_max > 0 && max_bias == 0.0f && logit_softcap == 0.0f &&
         mask->ne[0] == K->ne[1] && mask->ne[1] >= Q->ne[1] && mask->ne[2] == 1 &&
         K->ne[1] >= std::max<int64_t>(4096, 2*n_gather);
+
+    // GGML_CUDA_SPARSE_LOG=1: report the first few sparse-FA decisions that had a gather budget,
+    // so a run can confirm whether the sparse path actually engaged
+    static const bool log_sparse = getenv("GGML_CUDA_SPARSE_LOG") != nullptr;
+    if (log_sparse && n_kv_max > 0) {
+        static std::atomic<int> n_logged{0};
+        if (n_logged.fetch_add(1) < 16) {
+            GGML_LOG_INFO("%s: sparse=%d n_kv=%lld n_q=%lld ncols1=%d n_kv_max=%d K=%s\n", __func__,
+                (int) res, (long long) K->ne[1], (long long) Q->ne[1], ncols1, (int) n_kv_max, ggml_type_name(K->type));
+        }
+    }
+
+    return res;
 #endif // !defined(GGML_USE_HIP) && !defined(GGML_USE_MUSA)
 }
 

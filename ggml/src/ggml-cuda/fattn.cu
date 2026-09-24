@@ -146,7 +146,7 @@ bool ggml_cuda_flash_attn_ext_mma_f16_shall_use_sparse(const int cc, const ggml_
     if (log_sparse && n_kv_max > 0) {
         static std::atomic<int> n_logged{0};
         if (n_logged.fetch_add(1) < 16) {
-            GGML_LOG_INFO("%s: sparse=%d n_kv=%lld n_q=%lld ncols1=%d n_kv_max=%d K=%s\n", __func__,
+            fprintf(stderr, "%s: sparse=%d n_kv=%lld n_q=%lld ncols1=%d n_kv_max=%d K=%s\n", __func__,
                 (int) res, (long long) K->ne[1], (long long) Q->ne[1], ncols1, (int) n_kv_max, ggml_type_name(K->type));
         }
     }
@@ -639,6 +639,15 @@ static best_fattn_kernel ggml_cuda_get_best_fattn_kernel(const int device, const
     // If Turing tensor cores are available, use them:
     if (turing_mma_available(cc) && Q->ne[0] != 40 && Q->ne[0] != 72) {
         if (can_use_vector_kernel) {
+            {
+                static const bool log_sel = getenv("GGML_CUDA_SPARSE_LOG") != nullptr;
+                static std::atomic<int> n_logged{0};
+                if (log_sel && K->ne[1] > 4096 && n_logged.fetch_add(1) < 8) {
+                    fprintf(stderr, "fattn select: n_kv=%lld n_q=%lld K=%s quantized_kv=%d\n",
+                        (long long) K->ne[1], (long long) Q->ne[1], ggml_type_name(K->type),
+                        (int) (ggml_is_quantized(K->type) || ggml_is_quantized(V->type)));
+                }
+            }
             if (!ggml_is_quantized(K->type) && !ggml_is_quantized(V->type)) {
                 // the sparse gather exists only in the MMA kernel: (DKQ, DV, 1, 8) with GQA > 4
                 const bool sparse_decode = gqa_opt_applies && gqa_ratio > 4 &&

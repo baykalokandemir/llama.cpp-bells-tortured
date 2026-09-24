@@ -1379,6 +1379,19 @@ void llm_graph_input_ple::set_input(const llama_ubatch * ubatch) {
     // predecessors come from the KV cells (ext.tok); apply_ubatch() already stored this ubatch, so its own tokens count too
     mctx->get_prev_tokens(*ubatch, n_prev, prev);
 
+    // LLAMA_PLE_TRACE=1: for small (decode / verify) ubatches, print each token with the
+    // predecessor tokens its n-gram hash will use, so rollback correctness can be checked offline
+    static const bool ple_trace = getenv("LLAMA_PLE_TRACE") != nullptr;
+    if (ple_trace && n_tokens <= 8 && ubatch->token) {
+        for (int64_t i = 0; i < n_tokens; ++i) {
+            fprintf(stderr, "ple_trace ctx=%p pos=%d tok=%d prev=", (const void *) mctx, (int) ubatch->pos[i], (int) ubatch->token[i]);
+            for (int64_t j = 0; j < n_prev; ++j) {
+                fprintf(stderr, "%s%d", j ? "," : "", (int) prev[i*n_prev + j]);
+            }
+            fprintf(stderr, "\n");
+        }
+    }
+
     for (int64_t i = 0; i < n_tokens; ++i) {
         // an EOS in the window resets everything at or before it
         // a missing predecessor (before the sequence start, or no cached cell) reads as EOS

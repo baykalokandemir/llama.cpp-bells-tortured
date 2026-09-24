@@ -2551,6 +2551,15 @@ common_speculative_init_result::common_speculative_init_result(
     // the draft context holds as many tokens per sequence as the target context
     cparams.n_ctx = llama_n_ctx(ctx_tgt);
 
+    // LLAMA_DRAFT_UBATCH caps the ubatch of the draft context. A one-layer MTP head gains little
+    // from a large ubatch, while its compute buffer (mask and scores) scales with n_ctx x n_ubatch.
+    if (const char * e = getenv("LLAMA_DRAFT_UBATCH")) {
+        const uint32_t ub = (uint32_t) atoi(e);
+        if (ub > 0 && ub < cparams.n_ubatch) {
+            cparams.n_ubatch = ub;
+        }
+    }
+
     // note: for small models maybe we can set this to the maximum possible draft from all speculative types
     //       the extra memory for small models is likely negligible?
     cparams.n_rs_seq  = 0;

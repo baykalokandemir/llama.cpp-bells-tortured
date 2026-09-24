@@ -23,3 +23,27 @@ and llama.cpp keeps only the last built graph. "graphs reused" per 300-token req
 p_min is not usable until graphs for several batch shapes are cached. Single-sample depth points
 (8k/32k) are noisy; the shallow baseline itself spreads 39.6-57.8 across prompts.
 Full table: local/results/pmin-summary.txt.
+# graph-cache branch notes (2026-09-24)
+
+Branch `graph-cache` = qsa-slim + two CUDA commits:
+- `GGML_CUDA_GRAPH_STATS=1` prints eager/capture/replay counts of graph_compute calls (debug).
+- CUDA graphs keyed by node count + first/last node shape instead of nodes[0] alone
+  (`GGML_CUDA_GRAPH_KEY_LEGACY=1` restores the old key).
+
+Workload: local/bench/graphtest.sh (64k Q8_0, 240 slots, -ub 2048, pinned, MTP shared-Q4_K_M on
+CUDA1, 3x prose + 3x code short prompts, 300 tokens). Results in local/results/g*.json.
+
+| arm | replay | eager | decode prose/code (median) | tokens/pass | ms/pass | overall tok/s |
+|---|---:|---:|---|---:|---:|---:|
+| old key, n2 p0 | 94.5% | 3.6% | 56.6 / 56.0 (dips 45.6, 41.3) | 2.38 | 46.4 | 51.3 |
+| new key, n2 p0 | 95.6% | 2.5% | 57.1 / 56.5 (all 56.1-58.0) | 2.38 | 41.9 | 56.8 |
+| old key, n2 p0.75 | 20.9% | 59.2% | 41.1 / 42.8 | 2.09 | 49.5 | 42.3 |
+| new key, n2 p0.75 | 90.0% | 5.4% | 47.1 / 50.2 | 2.09 | 46.5 | 45.0 |
+
+Conclusions:
+- The shape key removes the slow runs of the baseline: +10.7% overall throughput, same median.
+- With the old key, variable verify sizes (p_min) made 59% of graph_compute calls run eagerly.
+- p_min still cannot win here: a verify pass costs ~the same for 2 or 3 tokens (~42 ms), so
+  stopping drafts early only loses tokens (2.09 vs 2.38 per pass). A llama.cpp-level per-shape
+  graph cache would only help p_min, so it was not built.
+- The very first request after load still prefills slowly (13.9 tok/s for 31 tokens); unrelated.

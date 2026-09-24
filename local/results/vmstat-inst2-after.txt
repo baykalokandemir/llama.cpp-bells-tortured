@@ -1,0 +1,2 @@
+pgscan_kswapd 399395494
+compact_daemon_wake 680

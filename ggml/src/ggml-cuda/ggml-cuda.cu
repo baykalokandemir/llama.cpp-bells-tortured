@@ -2660,8 +2660,28 @@ static void ggml_cuda_graph_stats_tick(bool use_cuda_graph, bool update_required
     }
 }
 
+// The key names a CUDA graph slot. Keying on nodes[0] alone makes graphs of different shapes
+// (e.g. MTP verify batches of 2 and 3 tokens, which llama.cpp rebuilds into the same memory)
+// share one slot, so every shape change resets warmup and forces eager runs plus re-capture.
+// Mix in the node count and the first/last node shapes so each shape keeps its own graph.
+// GGML_CUDA_GRAPH_KEY_LEGACY=1 restores the nodes[0]-only key.
 static const void * ggml_cuda_graph_get_key(ggml_cgraph * cgraph) {
-    return cgraph->nodes[0];
+    static const bool legacy = getenv("GGML_CUDA_GRAPH_KEY_LEGACY") != nullptr;
+    if (legacy || cgraph->n_nodes == 0) {
+        return cgraph->nodes[0];
+    }
+    uint64_t h = (uint64_t) (uintptr_t) cgraph->nodes[0];
+    auto mix = [&h](uint64_t v) {
+        h ^= v + 0x9e3779b97f4a7c15ULL + (h << 6) + (h >> 2);
+    };
+    mix((uint64_t) cgraph->n_nodes);
+    const ggml_tensor * first = cgraph->nodes[0];
+    const ggml_tensor * last  = cgraph->nodes[cgraph->n_nodes - 1];
+    for (int i = 0; i < GGML_MAX_DIMS; ++i) {
+        mix((uint64_t) first->ne[i]);
+        mix((uint64_t) last->ne[i]);
+    }
+    return (const void *) (uintptr_t) h;
 }
 
 static bool ggml_cuda_graph_update_required(ggml_backend_cuda_context * cuda_ctx, ggml_cgraph * cgraph) {

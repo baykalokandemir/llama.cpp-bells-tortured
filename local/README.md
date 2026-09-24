@@ -62,3 +62,20 @@ Results: local/results/{ple-*,ab-*,pw-*,d-*}.
 - Thread count (-t 32/8/4/8/32, -tb 32, -lzm off) does not explain the bimodal decode: run means
   48.1 / 47.1 / 52.6 / 50.9 / 51.4 tok/s; repeats of the same -t differ as much as different -t.
   The first request on a fresh server is often slow (39-41), consistent with BELLS cache warm-up.
+
+## PLE n-gram history after rejected drafts (ik PR #2460 check, 2026-09-24)
+
+Not affected. qwen4exp PLE takes n-gram predecessors from the attention KV cells by position
+(llama_kv_cache::get_prev_tokens -> seq_pos_tok_le), so a rejected drafts cells are simply rewritten.
+
+## PLE n-gram history after rejected drafts (ik PR #2460 check, 2026-09-24)
+
+Not affected. qwen4exp PLE takes n-gram predecessors from the attention KV cells by position
+(llama_kv_cache::get_prev_tokens -> seq_pos_tok_le), so the cells of a rejected draft are simply
+rewritten. Trace build on branch `ple-trace` (LLAMA_PLE_TRACE=1 prints pos, token and predecessors
+for ubatches of at most 8 tokens); checker local/bench/ple_trace_check.py. MTP n2, prose + code +
+8k doc: 907 accepted tokens checked, 166 of them rewritten after a rejection, 0 mismatches. The MTP
+draft context never runs the PLE path (one model object in the trace). Greedy text with MTP on vs
+off diverges early (prose char 249, code char 72) from batch-size numerics; without MTP the 8k-doc
+prompt is itself not reproducible (two runs diverge at char 121) while short prompts are.
+Results: local/results/{ex-*,trace-mtp2-*}.

@@ -91,3 +91,14 @@ Tools: local/bench/bimodal-probe.sh (per-request ms/pass + GPU telemetry, NREQ/N
 threadmon.py; host-side vCPU sampler at magi:/root/vcpu-sampler.py; all-thread guest sampler
 /tmp/allthreads.py (copied to local/bench/). Ruled out: GPU clocks/PCIe, thread count, GPU IRQs,
 kswapd, main-thread migration, evicting the main shard page cache.
+
+## Re-check with proactive compaction off (2026-09-25)
+
+local/bench/recheck-batch.sh, graphtest workload (64k Q8_0, 240 slots, -ub 2048, MTP n2), ms per pass:
+- baseline (-lzm off, shape key, -t 32): 41.3-42.5, overall 56.9 tok/s
+- legacy graph key: 41.4-43.2, 56.4 (no difference at fixed draft depth)
+- -lzm on (PLE cold): 53.9, 56.2 for the first two requests, then 41.8-42.7; overall 51.1
+  (cold PLE also slows early decode; -lzm off has no decode cost)
+- -t 8: 41.3-42.4 (56.9); -t 48: 41.4-45.8 (56.0): thread count irrelevant for decode
+- p_min 0.75: 2.09 tokens/pass, 41.1-51.6 ms, overall 47.0 (still a loss)
+- baseline repeat: 41.4-48.6 (three passes at 44.6-48.6): residual noise remains, much reduced.

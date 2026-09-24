@@ -1,0 +1,22 @@
+== base
+prose median 57.27 [57.61, 57.27, 56.97]
+code median 56.57 [56.38, 56.57, 56.69]
+== legacykey
+prose median 57.13 [57.1, 57.13, 57.15]
+code median 56.31 [54.2, 56.31, 56.56]
+== lzmon
+prose median 56.69 [44.87, 56.69, 56.86]
+code median 55.63 [41.69, 55.63, 56.05]
+== t8
+prose median 57.26 [57.96, 57.26, 57.01]
+code median 56.36 [56.36, 56.01, 56.71]
+== t48
+prose median 56.84 [57.55, 52.84, 56.84]
+code median 56.46 [56.29, 56.46, 56.55]
+== pmin075
+prose median 42.86 [42.86, 40.36, 49.72]
+code median 50.39 [50.39, 51.24, 49.98]
+== base2
+prose median 56.71 [49.83, 57.19, 56.71]
+code median 52.56 [52.56, 56.6, 51.18]
+ALLDONE

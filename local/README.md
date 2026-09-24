@@ -59,3 +59,6 @@ local/bench/pletest.sh + pagecache.py (mincore residency, /proc majflt + read_by
 - Decode is bimodal run to run (~47 vs ~56 tok/s) regardless of flags. Suspect CPU threadpool
   contention (-t 32 on 32 vCPUs while decode needs almost no CPU work); next test.
 Results: local/results/{ple-*,ab-*,pw-*,d-*}.
+- Thread count (-t 32/8/4/8/32, -tb 32, -lzm off) does not explain the bimodal decode: run means
+  48.1 / 47.1 / 52.6 / 50.9 / 51.4 tok/s; repeats of the same -t differ as much as different -t.
+  The first request on a fresh server is often slow (39-41), consistent with BELLS cache warm-up.

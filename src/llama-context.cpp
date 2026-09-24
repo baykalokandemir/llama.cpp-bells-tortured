@@ -675,6 +675,16 @@ llama_context::llama_context(
                 continue; // deliberately uncached
             }
 
+            // BELLS_HOST_ONLY=1: cache only layers whose routed experts are host-resident.
+            // A layer that -ot already placed on a GPU gains nothing from a cache and would
+            // spend VRAM on a second copy of its hottest experts.
+            if (const char * ho = getenv("BELLS_HOST_ONLY"); ho && ho[0] && ho[0] != 0) {
+                ggml_tensor * probe = layer.ffn_down_exps ? layer.ffn_down_exps : layer.ffn_gate_up_exps;
+                if (probe && probe->buffer && !ggml_backend_buffer_is_host(probe->buffer)) {
+                    continue;
+                }
+            }
+
             bells_tensors::layer_src s;
             s.il      = (int32_t) il;
             s.gate    = layer.ffn_gate_exps;

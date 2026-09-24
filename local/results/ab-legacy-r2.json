@@ -1,0 +1,44 @@
+[
+ {
+  "case": "prose",
+  "decode_tps": 48.91,
+  "n_gen": 300,
+  "draft_n": 244,
+  "draft_acc": 176
+ },
+ {
+  "case": "code",
+  "decode_tps": 47.11,
+  "n_gen": 300,
+  "draft_n": 254,
+  "draft_acc": 172
+ },
+ {
+  "case": "prose",
+  "decode_tps": 44.97,
+  "n_gen": 300,
+  "draft_n": 245,
+  "draft_acc": 176
+ },
+ {
+  "case": "code",
+  "decode_tps": 47.33,
+  "n_gen": 300,
+  "draft_n": 254,
+  "draft_acc": 172
+ },
+ {
+  "case": "prose",
+  "decode_tps": 53.41,
+  "n_gen": 300,
+  "draft_n": 245,
+  "draft_acc": 176
+ },
+ {
+  "case": "code",
+  "decode_tps": 56.48,
+  "n_gen": 300,
+  "draft_n": 254,
+  "draft_acc": 172
+ }
+]

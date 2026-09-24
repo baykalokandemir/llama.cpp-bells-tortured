@@ -1,0 +1,27 @@
+inst1 req0:  43.07 tok/s   55.7 ms/pass | g0: sm 2760 mem 13801 P1 56W pcie gen4 thr 0x0000000000000000 | g1: sm 2730 mem 13801 P1 58W pcie gen4 thr 0x0000000000000000
+inst1 req1:  59.15 tok/s   40.3 ms/pass | g0: sm 2752 mem 13801 P1 64W pcie gen4 thr 0x0000000000000000 | g1: sm 2662 mem 13801 P1 66W pcie gen4 thr 0x0000000000000000
+inst1 req2:  55.47 tok/s   42.9 ms/pass | g0: sm 2752 mem 13801 P1 63W pcie gen4 thr 0x0000000000000000 | g1: sm 2662 mem 13801 P1 64W pcie gen4 thr 0x0000000000000000
+inst1 req3:  49.56 tok/s   48.0 ms/pass | g0: sm 2752.0 mem 13801.0 P1 60W pcie gen4 thr 0x0000000000000000 | g1: sm 2662.0 mem 13801.0 P1 61W pcie gen4 thr 0x0000000000000000
+inst1 req4:  47.13 tok/s   50.5 ms/pass | g0: sm 2670 mem 13801 P1 56W pcie gen4 thr 0x0000000000000000 | g1: sm 2662 mem 13801 P1 59W pcie gen4 thr 0x0000000000000000
+inst2 req0:  36.43 tok/s   65.9 ms/pass | g0: sm 2677.0 mem 13801.0 P1 53W pcie gen4 thr 0x0000000000000000 | g1: sm 2662.0 mem 13801.0 P1 54W pcie gen4 thr 0x0000000000000000
+inst2 req1:  47.29 tok/s   50.3 ms/pass | g0: sm 2662.0 mem 13801.0 P1 58W pcie gen4 thr 0x0000000000000000 | g1: sm 2655.0 mem 13801.0 P1 59W pcie gen4 thr 0x0000000000000000
+inst2 req2:  49.49 tok/s   48.1 ms/pass | g0: sm 2745.0 mem 13801.0 P1 61W pcie gen4 thr 0x0000000000000000 | g1: sm 2655.0 mem 13801.0 P1 63W pcie gen4 thr 0x0000000000000000
+inst2 req3:  57.36 tok/s   41.5 ms/pass | g0: sm 2737 mem 13801 P1 66W pcie gen4 thr 0x0000000000000000 | g1: sm 2662 mem 13801 P1 67W pcie gen4 thr 0x0000000000000000
+inst2 req4:  59.52 tok/s   40.0 ms/pass | g0: sm 2737 mem 13801 P1 68W pcie gen4 thr 0x0000000000000000 | g1: sm 2655 mem 13801 P1 69W pcie gen4 thr 0x0000000000000000
+inst3 req0:  43.19 tok/s   55.6 ms/pass | g0: sm 2745 mem 13801 P1 58W pcie gen4 thr 0x0000000000000000 | g1: sm 2760 mem 13801 P1 60W pcie gen4 thr 0x0000000000000000
+inst3 req1:  48.95 tok/s   48.6 ms/pass | g0: sm 2745.0 mem 13801.0 P1 62W pcie gen4 thr 0x0000000000000000 | g1: sm 2655.0 mem 13801.0 P1 64W pcie gen4 thr 0x0000000000000000
+inst3 req2:  49.35 tok/s   48.2 ms/pass | g0: sm 2745.0 mem 13801.0 P1 63W pcie gen4 thr 0x0000000000000000 | g1: sm 2655.0 mem 13801.0 P1 64W pcie gen4 thr 0x0000000000000000
+inst3 req3:  57.69 tok/s   41.3 ms/pass | g0: sm 2737.0 mem 13801.0 P1 68W pcie gen4 thr 0x0000000000000000 | g1: sm 2658.5 mem 13801.0 P1 70W pcie gen4 thr 0x0000000000000000
+inst3 req4:  59.42 tok/s   40.1 ms/pass | g0: sm 2730 mem 13801 P1 69W pcie gen4 thr 0x0000000000000000 | g1: sm 2655 mem 13801 P1 70W pcie gen4 thr 0x0000000000000000
+inst4 req0:  42.43 tok/s   56.6 ms/pass | g0: sm 2745.0 mem 13801.0 P1 59W pcie gen4 thr 0x0000000000000000 | g1: sm 2662.0 mem 13801.0 P1 61W pcie gen4 thr 0x0000000000000000
+inst4 req1:  47.41 tok/s   50.2 ms/pass | g0: sm 2737 mem 13801 P1 60W pcie gen4 thr 0x0000000000000000 | g1: sm 2655 mem 13801 P1 64W pcie gen4 thr 0x0000000000000000
+inst4 req2:  48.94 tok/s   48.6 ms/pass | g0: sm 2730.0 mem 13801.0 P1 63W pcie gen4 thr 0x0000000000000000 | g1: sm 2651.0 mem 13801.0 P1 65W pcie gen4 thr 0x0000000000000000
+inst4 req3:  49.60 tok/s   48.0 ms/pass | g0: sm 2730.0 mem 13801.0 P1 64W pcie gen4 thr 0x0000000000000000 | g1: sm 2647.0 mem 13801.0 P1 66W pcie gen4 thr 0x0000000000000000
+inst4 req4:  59.23 tok/s   40.2 ms/pass | g0: sm 2730 mem 13801 P1 71W pcie gen4 thr 0x0000000000000000 | g1: sm 2655 mem 13801 P1 72W pcie gen4 thr 0x0000000000000000
+inst5 req0:  42.85 tok/s   56.0 ms/pass | g0: sm 2760.0 mem 13801.0 P1 56W pcie gen4 thr 0x0000000000000000 | g1: sm 2662.0 mem 13801.0 P1 57W pcie gen4 thr 0x0000000000000000
+inst5 req1:  43.43 tok/s   54.8 ms/pass | g0: sm 2722 mem 13801 P1 56W pcie gen4 thr 0x0000000000000000 | g1: sm 2662 mem 13801 P1 58W pcie gen4 thr 0x0000000000000000
+inst5 req2:  46.56 tok/s   51.1 ms/pass | g0: sm 2670.0 mem 13801.0 P1 57W pcie gen4 thr 0x0000000000000000 | g1: sm 2662.0 mem 13801.0 P1 60W pcie gen4 thr 0x0000000000000000
+inst5 req3:  47.53 tok/s   50.1 ms/pass | g0: sm 2745 mem 13801 P1 58W pcie gen4 thr 0x0000000000000000 | g1: sm 2655 mem 13801 P1 61W pcie gen4 thr 0x0000000000000000
+inst5 req4:  55.66 tok/s   42.8 ms/pass | g0: sm 2737 mem 13801 P1 63W pcie gen4 thr 0x0000000000000000 | g1: sm 2655 mem 13801 P1 66W pcie gen4 thr 0x0000000000000000
+local/bench/bimodal-probe.sh: line 42: syntax error near unexpected token `('
+local/bench/bimodal-probe.sh: line 42: `redicted_per_second"]:6.2f} tok/s  {ms:5.1f} ms/pass | " + " | ".join(summ), flush=True)'

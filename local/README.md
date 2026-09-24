@@ -79,3 +79,15 @@ draft context never runs the PLE path (one model object in the trace). Greedy te
 off diverges early (prose char 249, code char 72) from batch-size numerics; without MTP the 8k-doc
 prompt is itself not reproducible (two runs diverge at char 121) while short prompts are.
 Results: local/results/{ex-*,trace-mtp2-*}.
+
+## Bimodal decode root cause (2026-09-25)
+
+Decode varied ~40 / ~48 / ~58 ms per MTP pass for the same prompt with identical acceptance.
+Cause: guest proactive memory compaction. kcompactd0 runs for the first requests after each server
+load (the load fragments memory: 43 GB file read + 41 GB pinned + 27 GB PLE) and its page migration
+stalls the latency-bound host thread. Fix: `sysctl -w vm.compaction_proactiveness=0` in the guest
+(root, via qm guest exec). After: all requests after the first at 40.1-41.5 ms/pass (57-59 tok/s).
+Tools: local/bench/bimodal-probe.sh (per-request ms/pass + GPU telemetry, NREQ/N/EVICT_MAIN env),
+threadmon.py; host-side vCPU sampler at magi:/root/vcpu-sampler.py; all-thread guest sampler
+/tmp/allthreads.py (copied to local/bench/). Ruled out: GPU clocks/PCIe, thread count, GPU IRQs,
+kswapd, main-thread migration, evicting the main shard page cache.

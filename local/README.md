@@ -47,3 +47,15 @@ Conclusions:
   stopping drafts early only loses tokens (2.09 vs 2.38 per pass). A llama.cpp-level per-shape
   graph cache would only help p_min, so it was not built.
 - The very first request after load still prefills slowly (13.9 tok/s for 31 tokens); unrelated.
+
+## PLE page cache and the graph-key confound (2026-09-24)
+
+local/bench/pletest.sh + pagecache.py (mincore residency, /proc majflt + read_bytes per request).
+- `-lzm on`: pinned loading evicts the 27 GB PLE shard (0-7.5% resident after load, even if pre-read).
+  Cold 8k prefill 159.6 tok/s (81,490 major faults, 318 MiB); same 8k again 339.0; 32k new 181.7.
+- `-lzm off`: table mapped and resident after load; 8k 334.6 / 338.3, 32k new 308.2, 0 faults.
+- Clean ABAB of CUDA graph key (legacy vs shape, same binary, -lzm off): no baseline difference
+  (prose/code medians 53.6/47.2, 48.2/47.2, 48.9/47.3, 48.3/47.2). The earlier +10.7% was PLE/order.
+- Decode is bimodal run to run (~47 vs ~56 tok/s) regardless of flags. Suspect CPU threadpool
+  contention (-t 32 on 32 vCPUs while decode needs almost no CPU work); next test.
+Results: local/results/{ple-*,ab-*,pw-*,d-*}.

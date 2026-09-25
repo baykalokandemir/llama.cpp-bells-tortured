@@ -97,6 +97,7 @@ Numbers from different sessions are not directly comparable (page-cache regime, 
 | GenerelSchwerz moe-cache fork instead of BELLS (same session, 200 slots, FR off in all arms) | --moe-expert-cache-size 200, grouped decode + CUDA graphs (fork 1af951956) | shallow 48.1-48.6 vs BELLS 56.8-57.2 (-15%); 8k 45.8 vs 57.5; 32k 40.2 vs 55.5 (-28%); hit ~84% (unique expert accesses) vs BELLS 94.5% (per layer-call) | 8k 420 vs 368 (+14%), 32k 407 vs 347 (+17%) | ~600-750 MiB more per GPU at equal slots; 240 slots OOM on the 8k prompt | rejected [15] |
 | Fork + --moe-early-router --decode-overlap --decode-boundary-overlap | same, 200 slots | 47.1-48.0 / 44.5 / 39.2 (slightly worse) | 321 / 330 (-23%) | same | rejected |
 | Fork with LRU eviction | GGML_CUDA_MOE_FREQUENCY=0 | 47.7-48.2 / 45.6 / 40.4 (same as frequency) | 419 / 419 | same | rejected |
+| BELLS: one routing readback per layer + skip unchanged slot-table uploads | bells-rb (BELLS_READBACK_ROWS=1 / BELLS_UPLOAD_ALWAYS=1 disable) | 2 clean pairs: shallow 64.5 -> 66.0-66.6 (+2.2-3.0%), 8k +1.5-1.8%, 32k +1.9-2.9%; readback 25.6 -> 10.5 us, upload 14.1 -> 9.8 us per layer-call, ~62% of uploads skipped; output identical | unchanged | none | pending merge [16] |
 
 Footnotes:
 
@@ -141,6 +142,12 @@ Footnotes:
     at 200 slots reports per layer-call readback 26 us + copy 19 us + upload 15 us (~2.9 ms per
     48-layer pass): moving that bookkeeping onto the GPU inside BELLS, not switching forks, is the
     remaining #12 target. The fork's faster prefill path may be worth a separate look.
+16. nsys timeline (local/bench/bellsprof.{sh,py}, CUDA graphs on, node-level trace), shallow MTP decode at
+    240 slots: 42 ms/pass = kernels 25.7 + expert H2D copies 3.5-5.8 + GPU idle 11-13 ms. BELLS-caused
+    idle ~7-9 ms: ~110 us from each slot-table upload to the next kernel (callback return, scheduler,
+    graph launch; 3.5-5 ms), per-row routing readback (1.1 ms), sync and copy issue gaps (~2 ms). The
+    first pair of the A/B ran right after a vLLM model had held the GPUs (both arms slow, 45-53
+    shallow) and is excluded; results in local/results/bellsrb.
 
 ### Costs and downsides of what we kept
 

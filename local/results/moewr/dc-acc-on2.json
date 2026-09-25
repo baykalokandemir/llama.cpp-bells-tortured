@@ -1,0 +1,132 @@
+[
+ {
+  "case": "warmup",
+  "prompt_n": 31,
+  "prompt_tps": 21.4,
+  "decode_tps": 38.37,
+  "n_gen": 64,
+  "decode_ms": 1641.9,
+  "draft_n": 49,
+  "draft_acc": 38,
+  "sha": "0667a351a23f"
+ },
+ {
+  "case": "prose",
+  "prompt_n": 31,
+  "prompt_tps": 52.9,
+  "decode_tps": 68.72,
+  "n_gen": 300,
+  "decode_ms": 4351.2,
+  "draft_n": 248,
+  "draft_acc": 175,
+  "sha": "719ffe99426a"
+ },
+ {
+  "case": "code",
+  "prompt_n": 27,
+  "prompt_tps": 62.6,
+  "decode_tps": 66.5,
+  "n_gen": 300,
+  "decode_ms": 4496.0,
+  "draft_n": 239,
+  "draft_acc": 179,
+  "sha": "1b73e9bc392c"
+ },
+ {
+  "case": "math",
+  "prompt_n": 34,
+  "prompt_tps": 62.1,
+  "decode_tps": 66.4,
+  "n_gen": 300,
+  "decode_ms": 4503.0,
+  "draft_n": 218,
+  "draft_acc": 189,
+  "sha": "60180e69b054"
+ },
+ {
+  "case": "list",
+  "prompt_n": 33,
+  "prompt_tps": 59.8,
+  "decode_tps": 59.14,
+  "n_gen": 300,
+  "decode_ms": 5055.6,
+  "draft_n": 256,
+  "draft_acc": 171,
+  "sha": "e9a672c904e4"
+ },
+ {
+  "case": "letter",
+  "prompt_n": 33,
+  "prompt_tps": 56.0,
+  "decode_tps": 61.14,
+  "n_gen": 300,
+  "decode_ms": 4890.7,
+  "draft_n": 244,
+  "draft_acc": 177,
+  "sha": "d953d181c053"
+ },
+ {
+  "case": "translate",
+  "prompt_n": 36,
+  "prompt_tps": 33.8,
+  "decode_tps": 58.79,
+  "n_gen": 300,
+  "decode_ms": 5085.7,
+  "draft_n": 252,
+  "draft_acc": 172,
+  "sha": "80331e749344"
+ },
+ {
+  "case": "refactor",
+  "prompt_n": 56,
+  "prompt_tps": 47.8,
+  "decode_tps": 64.59,
+  "n_gen": 300,
+  "decode_ms": 4629.4,
+  "draft_n": 215,
+  "draft_acc": 191,
+  "sha": "601efa617963"
+ },
+ {
+  "case": "story",
+  "prompt_n": 36,
+  "prompt_tps": 34.9,
+  "decode_tps": 56.79,
+  "n_gen": 300,
+  "decode_ms": 5265.0,
+  "draft_n": 289,
+  "draft_acc": 154,
+  "sha": "6bb772766ed2"
+ },
+ {
+  "case": "doc8k-a",
+  "prompt_n": 8030,
+  "prompt_tps": 371.0,
+  "decode_tps": 63.65,
+  "n_gen": 200,
+  "decode_ms": 3126.6,
+  "draft_n": 141,
+  "draft_acc": 128,
+  "sha": "612dc5f3e897"
+ },
+ {
+  "case": "doc8k-b",
+  "prompt_n": 8030,
+  "prompt_tps": 373.2,
+  "decode_tps": 64.02,
+  "n_gen": 200,
+  "decode_ms": 3108.4,
+  "draft_n": 153,
+  "draft_acc": 122,
+  "sha": "add5f0e3fa33"
+ },
+ {
+  "case": "TOTAL",
+  "n_gen": 2800,
+  "decode_ms": 44511.6,
+  "draft_n": 2255,
+  "draft_acc": 1658,
+  "decode_tps": 62.9,
+  "acc_rate": 0.7353
+ }
+]

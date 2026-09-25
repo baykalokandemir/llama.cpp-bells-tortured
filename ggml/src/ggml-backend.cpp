@@ -1818,6 +1818,20 @@ static enum ggml_status ggml_backend_sched_compute_splits(ggml_backend_sched_t s
 
                 struct ggml_cgraph gv = ggml_graph_view(&split->graph, j0, j1 + 1);
 
+                // A view of an unchanged split over the same node range is the same graph, so give it
+                // a stable uid derived from the split's: backends that cache per graph (the CUDA graph
+                // update check) can then skip re-comparing every node on each call. The split uid is
+                // renewed whenever the graph is split or allocated again. Bit 63 keeps these apart
+                // from counter uids. GGML_SCHED_VIEW_UID=0 leaves views at uid 0.
+                static const bool view_uid = [] {
+                    const char * s = getenv("GGML_SCHED_VIEW_UID");
+                    return !s || s[0] != '0';
+                }();
+                if (view_uid && split->graph.uid != 0 && j0 < 0x10000 && j1 < 0x10000) {
+                    gv.uid = (1ULL << 63) | ((split->graph.uid & 0x7fffffffULL) << 32) |
+                             ((uint64_t) j0 << 16) | (uint64_t) j1;
+                }
+
                 enum ggml_status ec = ggml_backend_graph_compute_async(split_backend, &gv);
                 if (ec != GGML_STATUS_SUCCESS) {
                     return ec;

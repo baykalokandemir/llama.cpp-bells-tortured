@@ -806,6 +806,18 @@ bool ggml_cuda_should_use_mmvf(enum ggml_type type, int cc, const int64_t * src0
         }
     }
 
+    // A weight with only a few rows (the qwen4exp hyper-connection inject is [10240, 4]) gives tensor-core
+    // GEMM nothing to tile: cuBLAS spends ~15 us of fixed cost on ~80 KB. Take the vector kernel at every
+    // batch size it supports. GGML_CUDA_MMVF_THIN_ROWS sets the row limit (default 8, 0 disables).
+    static const int64_t thin_rows = [] {
+        const char * e = getenv("GGML_CUDA_MMVF_THIN_ROWS");
+        return e ? (int64_t) atoll(e) : (int64_t) 8;
+    }();
+    if (src0_ne[1] <= thin_rows && ne11 <= MMVF_MAX_BATCH_SIZE &&
+            (type == GGML_TYPE_F32 || type == GGML_TYPE_F16 || type == GGML_TYPE_BF16)) {
+        return true;
+    }
+
     switch (type) {
         case GGML_TYPE_F32:
             if (GGML_CUDA_CC_IS_NVIDIA(cc)) {

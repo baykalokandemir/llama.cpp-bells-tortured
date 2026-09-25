@@ -51,10 +51,10 @@ patches; treat the code accordingly.
 | Incremental pooled-key cache for the QSA indexer (upstream PR #28699) | ac3af2fc1, `LLAMA_QSA_NO_POOLED_CACHE=1` disables | +13.8% at 61k |
 | Sparse flash attention with Q8_0 KV: convert only the selected rows to F16 | fa-sparse-q8 merge, `GGML_CUDA_FA_SPARSE_ALL_ROWS=1` disables | +12.5% at 61k |
 | One-element-per-thread `get_rows` for rows of <= 32 elements | getrows-small merge, `GGML_CUDA_GET_ROWS_SMALL=0` disables | -6% ms/pass at 61k |
-
 | BELLS: one routing readback per layer, skip unchanged slot-table uploads | bells-rb merge, `BELLS_READBACK_ROWS=1` / `BELLS_UPLOAD_ALWAYS=1` disable | +1.5-3% |
 | Stable uid for the graph views the BELLS callback creates (skips CUDA graph re-checks) | sched-view-uid merge, `GGML_SCHED_VIEW_UID=0` disables | +2-3% |
 | GPU token sampling (upstream flag) plus no scheduler re-reserve per request | `--backend-sampling`; sampler-reserve merge, `LLAMA_SAMPLER_ALWAYS_RESERVE=1` disables | +5%; without the fix short prompts lose ~0.5 s |
+
 Rejected attempts (tensor parallel, n-gram drafting, draft p_min, `-ub 4096`, F16 KV, split
 GPU/CPU experts, and others) are in the table in local/README.md with the reason for each.
 

@@ -10046,6 +10046,16 @@ static std::vector<std::unique_ptr<test_case>> make_test_cases_eval() {
         }
     }
 
+    // thin weights (few rows, long rows, small batch) take mmvf at every batch it supports,
+    // e.g. the qwen4exp hyper-connection inject [10240, 4]
+    for (ggml_type type_a : {GGML_TYPE_F32, GGML_TYPE_F16, GGML_TYPE_BF16}) {
+        for (int m : {1, 4, 8}) {
+            for (int n : {1, 2, 3, 5, 8, 9}) {
+                test_cases.emplace_back(new test_mul_mat(type_a, GGML_TYPE_F32, m, n, 10240, {1, 1}, {1, 1}));
+            }
+        }
+    }
+
     // Test IQP panel path for all grid IQ types
     for (ggml_type type_a : {GGML_TYPE_IQ2_XXS, GGML_TYPE_IQ2_XS, GGML_TYPE_IQ2_S, GGML_TYPE_IQ3_XXS,
                              GGML_TYPE_IQ3_S, GGML_TYPE_IQ1_S, GGML_TYPE_IQ1_M, GGML_TYPE_IQ4_XS}) {

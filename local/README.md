@@ -80,8 +80,8 @@ Numbers from different sessions are not directly comparable (page-cache regime, 
 | VM 32 -> 48 vCPU | Proxmox | fast state ~42 -> ~40 ms/pass (not isolated) | not measured | none | adopted (not isolated) |
 | Thread count | -t 4/8/32/48, -tb 32 | irrelevant: -t 8 56.9, -t 48 56.0 vs -t 32 56.9 | not measured | none | neutral |
 | **In progress** | | | | | |
-| Sparse FA with Q8_0 KV: convert only listed rows | branch fa-sparse-q8 (worktree /home/god/dev/llama.cpp-faq8), GGML_CUDA_FA_SPARSE_ALL_ROWS=1 disables | not measured | not measured | none | pending [13] |
-| Indexer top-k over blocks instead of expanded tokens | not started | not measured | not measured | not measured | pending [14] |
+| Sparse FA with Q8_0 KV: convert only listed rows | fa-sparse-q8 (merged), GGML_CUDA_FA_SPARSE_ALL_ROWS=1 disables | 61k 49.6/50.9 -> 55.8/57.3 (+12.5%), 32k +5%, 16k +4% (64k ctx, 1 pair) | unchanged | none (full F16 buffer still allocated) | adopted [13] |
+| Indexer top-k over blocks -> replaced by short-row get_rows kernel | getrows-small (merged), GGML_CUDA_GET_ROWS_SMALL=0 disables | ms/pass 61k 48.3 -> 45.3 (-6%), 32k -2.7%, <=16k none | unchanged | none | adopted [14] |
 | PR #28699 pooled-key cache | LLAMA_QSA_NO_POOLED_CACHE=1 disables (ac3af2fc1) | 61k 43.8 -> 49.8 (+13.8%), 32k +4.1%, 8-16k +2-3% (64k ctx, 2 pairs) | unchanged (345-380) | ~50 MiB per GPU | adopted |
 
 Footnotes:
@@ -116,10 +116,12 @@ Footnotes:
 13. The 3-query MTP verify pass takes the MMA flash-attention kernel, which needs F16 K/V; launch_fattn
     converted the whole Q8_0 cache of each QSA layer every call (O(n_kv)) and the sparse kernel then read
     only the ~2048 listed rows. The patch computes the index lists first and converts only those rows.
+    Depth profile at 61k: this conversion was 5.1 ms of the ~10 ms per-pass growth over 8k (claim 107).
     test-backend-ops FLASH_ATTN_EXT 3986/3986 on and off, incl. new Qwen-QSA Q8_0 nb 3/4 kv 16k/32k cases.
-    Speed unmeasured: the depth profiles were contaminated by a leftover server (2026-09-25).
-14. Planned after the depth profile: top-k over the n_kv/4 block scores (ik #2374 / vLLM) instead of
-    expanding to tokens; not bit-identical to the current token-level selection at the last block.
+14. The profile showed top-k itself flat (0.32 ms/pass); the cost was the get_rows expanding block scores
+    to every cell (3-float rows, one thread block per row: 2.5 ms/pass at 61k). A one-element-per-thread
+    kernel for rows <= 32 is bit-identical. Block-level top-k was dropped (blk_cells cannot express the
+    incomplete tail block). GET_ROWS tests 252/252.
 
 ### Costs and downsides of what we kept
 

@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # nsys kernel profile of MTP decode, to attribute the hyper-connection inject matmuls
-B=/home/god/dev/llama.cpp-qsa/build/bin
+B=/home/god/dev/llama.cpp-hcmmvf/build/bin
 M=/opt/stacks/llm-stack/models/qwen38-flash-next-gsq/IQ3_XXS_HCQ8/Qwen3.8-Flash-Next-GSQ-RCO-IQ3_XXS-HCQ8-00001-of-00002.gguf
 H=/opt/stacks/llm-stack/models/qwen38-flash-next-mtp/MTP/mtp-Qwen3.8-Flash-Next-shared-Q4_K_M.gguf
-O=/home/god/dev/llama.cpp-qsa/local/results/hcprof
+O=/home/god/dev/llama.cpp-hcmmvf/local/results/hcprof-${TAG:-on}
 mkdir -p $O
 C="-ngl 99 -sm layer -ts 28,20 -c 65536 -lm mmap -lzm off -t 32 -tb 32 -fa on -ctk q8_0 -ctv q8_0 --fit off --parallel 1 --jinja --cpu-moe -ub 2048 -b 2048 --bells-slots 240 -md $H --spec-type draft-mtp -devd CUDA1 -ngld 99 --spec-draft-n-max 2"
 env LLAMA_DRAFT_UBATCH=256 GGML_CUDA_DISABLE_GRAPHS=1 LD_LIBRARY_PATH=$B nsys profile -t cuda,nvtx -s none --cpuctxsw=none -o $O/mtp -f true \

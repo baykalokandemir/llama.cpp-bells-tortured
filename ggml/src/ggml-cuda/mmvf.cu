@@ -2,6 +2,7 @@
 #include "common.cuh"
 #include "unary.cuh"
 #include "mmvf.cuh"
+#include "mmf.cuh"
 #include "convert.cuh"
 
 template <typename T, typename type_acc, int ncols_dst, int block_size, bool has_fusion = false, bool is_multi_token_id = false>
@@ -806,14 +807,17 @@ bool ggml_cuda_should_use_mmvf(enum ggml_type type, int cc, const int64_t * src0
         }
     }
 
-    // A weight with only a few rows (the qwen4exp hyper-connection inject is [10240, 4]) gives tensor-core
-    // GEMM nothing to tile: cuBLAS spends ~15 us of fixed cost on ~80 KB. Take the vector kernel at every
-    // batch size it supports. GGML_CUDA_MMVF_THIN_ROWS sets the row limit (default 8, 0 disables).
-    static const int64_t thin_rows = [] {
-        const char * e = getenv("GGML_CUDA_MMVF_THIN_ROWS");
-        return e ? (int64_t) atoll(e) : (int64_t) 8;
+    // Small batches that mmf cannot take (row count not a multiple of its block) otherwise fall to cuBLAS,
+    // which picks a tiny-tile GEMM: the qwen4exp ssm_alpha/ssm_beta [2560, 48] at the 3-token MTP verify
+    // batch run on 4 blocks of 32 threads for ~15 us. mmvf spreads one block per row. Below ~16 rows mmvf
+    // has too few blocks and cuBLAS split-K is faster (hyper-connection inject [10240, 4]: 7.1 vs ~5.8 us).
+    // GGML_CUDA_MMVF_FALLBACK_MIN_ROWS sets the lower bound (default 16, negative disables).
+    static const int64_t fallback_min_rows = [] {
+        const char * e = getenv("GGML_CUDA_MMVF_FALLBACK_MIN_ROWS");
+        return e ? (int64_t) atoll(e) : (int64_t) 16;
     }();
-    if (src0_ne[1] <= thin_rows && ne11 <= MMVF_MAX_BATCH_SIZE &&
+    if (fallback_min_rows >= 0 && GGML_CUDA_CC_IS_NVIDIA(cc) && ne11 <= MMVF_MAX_BATCH_SIZE &&
+            src0_ne[1] >= fallback_min_rows && src0_ne[1] <= 512 && src0_ne[1] % MMF_ROWS_PER_BLOCK != 0 &&
             (type == GGML_TYPE_F32 || type == GGML_TYPE_F16 || type == GGML_TYPE_BF16)) {
         return true;
     }

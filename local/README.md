@@ -80,7 +80,7 @@ Numbers from different sessions are not directly comparable (page-cache regime, 
 | VM 32 -> 48 vCPU | Proxmox | fast state ~42 -> ~40 ms/pass (not isolated) | not measured | none | adopted (not isolated) |
 | Thread count | -t 4/8/32/48, -tb 32 | irrelevant: -t 8 56.9, -t 48 56.0 vs -t 32 56.9 | not measured | none | neutral |
 | **In progress** | | | | | |
-| PR #28699 pooled-key cache | branch pooled-cache (no commits yet) | not measured | not measured | not measured | pending |
+| PR #28699 pooled-key cache | LLAMA_QSA_NO_POOLED_CACHE=1 disables (ac3af2fc1) | 61k 43.8 -> 49.8 (+13.8%), 32k +4.1%, 8-16k +2-3% (64k ctx, 2 pairs) | unchanged (345-380) | ~50 MiB per GPU | adopted |
 
 Footnotes:
 

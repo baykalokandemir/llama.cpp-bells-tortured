@@ -1,0 +1,21 @@
+1.05.492.366 W llama_context: n_ctx is not divisible by n_seq_max - rounding down to 16896
+init: cache split over 2 devices, sizing from the tightest
+init: working set 0.84 GiB (48 layers x 10 experts x 1.78 MiB), cache holds 24.0x it -> enough to try, but measure - a high ratio does not predict a speedup
+init: 240 slots/layer of 512 experts, 18.81 GiB VRAM (73% of the card), serves ubatch <= 24
+
+llama_batched_bench: n_kv_max = 16896, n_batch = 2048, n_ubatch = 2048, flash_attn = 1, is_pp_shared = 0, is_tg_separate = 0, n_gpu_layers = 99, n_threads = 32, n_threads_batch = 32
+
+|    PP |     TG |    B |   N_KV |   T_PP s | S_PP t/s |   T_TG s | S_TG t/s |      T s |    S t/s |
+|-------|--------|------|--------|----------|----------|----------|----------|----------|----------|
+bells_timing: per layer-call: readback 12.3 us, copy 21.1 us, upload 14.8 us, hit 82.9% (2000 calls)
+bells_timing: per layer-call: readback 10.8 us, copy 13.2 us, upload 13.7 us, hit 88.0% (4000 calls)
+bells_timing: per layer-call: readback 10.3 us, copy 9.9 us, upload 13.0 us, hit 90.6% (6000 calls)
+|  1024 |    128 |    1 |   1152 |    2.520 |   406.37 |    3.104 |    41.23 |    5.624 |   204.83 |
+bells_timing: per layer-call: readback 13.7 us, copy 9.1 us, upload 13.1 us, hit 93.8% (8000 calls)
+bells_timing: per layer-call: readback 16.0 us, copy 8.4 us, upload 13.1 us, hit 95.2% (10000 calls)
+bells_timing: per layer-call: readback 17.6 us, copy 7.6 us, upload 12.9 us, hit 96.1% (12000 calls)
+|  1024 |    128 |    3 |   3456 |    8.174 |   375.85 |    4.277 |    89.78 |   12.450 |   277.58 |
+
+1.27.406.811 W ~llama_context:      CUDA0 compute buffer size of 1209.5006 MiB, does not match expectation of 1099.4822 MiB
+free: hit 96.2% (243714 of 253280), 9566 experts copied, 16.65 GiB moved
+free: per layer-call: readback 17.8 us, copy 7.5 us, upload 12.8 us (12336 calls, 470.1 ms total)

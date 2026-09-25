@@ -97,7 +97,10 @@ Numbers from different sessions are not directly comparable (page-cache regime, 
 | GenerelSchwerz moe-cache fork instead of BELLS (same session, 200 slots, FR off in all arms) | --moe-expert-cache-size 200, grouped decode + CUDA graphs (fork 1af951956) | shallow 48.1-48.6 vs BELLS 56.8-57.2 (-15%); 8k 45.8 vs 57.5; 32k 40.2 vs 55.5 (-28%); hit ~84% (unique expert accesses) vs BELLS 94.5% (per layer-call) | 8k 420 vs 368 (+14%), 32k 407 vs 347 (+17%) | ~600-750 MiB more per GPU at equal slots; 240 slots OOM on the 8k prompt | rejected [15] |
 | Fork + --moe-early-router --decode-overlap --decode-boundary-overlap | same, 200 slots | 47.1-48.0 / 44.5 / 39.2 (slightly worse) | 321 / 330 (-23%) | same | rejected |
 | Fork with LRU eviction | GGML_CUDA_MOE_FREQUENCY=0 | 47.7-48.2 / 45.6 / 40.4 (same as frequency) | 419 / 419 | same | rejected |
-| BELLS: one routing readback per layer + skip unchanged slot-table uploads | bells-rb (BELLS_READBACK_ROWS=1 / BELLS_UPLOAD_ALWAYS=1 disable) | 2 clean pairs: shallow 64.5 -> 66.0-66.6 (+2.2-3.0%), 8k +1.5-1.8%, 32k +1.9-2.9%; readback 25.6 -> 10.5 us, upload 14.1 -> 9.8 us per layer-call, ~62% of uploads skipped; output identical | unchanged | none | pending merge [16] |
+| BELLS: one routing readback per layer + skip unchanged slot-table uploads | bells-rb (BELLS_READBACK_ROWS=1 / BELLS_UPLOAD_ALWAYS=1 disable) | 2 clean pairs: shallow 64.5 -> 66.0-66.6 (+2.2-3.0%), 8k +1.5-1.8%, 32k +1.9-2.9%; readback 25.6 -> 10.5 us, upload 14.1 -> 9.8 us per layer-call, ~62% of uploads skipped; output identical | unchanged | none | adopted (merged e27789c0b) [16] |
+| Stable uid for eval-callback graph views (CUDA graph update check skipped) | sched-view-uid d1d596db2, GGML_SCHED_VIEW_UID=0 disables | shallow 66.1 -> 68.2, 8k +1.8-2.8%, 32k +2.3% (2 pairs, 1 off arm in slow regime); output identical; uid_reuse 526 -> ~26.3k of ~28.3k replays | unchanged | none | pending merge [17] |
+| Backend (GPU) sampling for the target model | --backend-sampling / LLAMA_ARG_BACKEND_SAMPLING=1 (upstream flag) | shallow 66.2 -> 69.3-69.7 (+5%), 8k +4.6-5.5%, 32k +5.5-5.9% (2 pairs); output and acceptance identical | alone: short prompts 64 -> 13-36 tok/s, 8k -2% (per-request scheduler re-reserve, fixed by the next row) | none measured | adopt with sampler-reserve [17] |
+| No scheduler re-reserve on backend-sampler removal / identical re-install | sampler-reserve b239bafb8, LLAMA_SAMPLER_ALWAYS_RESERVE=1 disables | with -bs: 69.7 shallow either way; removes decode dips after re-reserve | with -bs: 31-token prompt 20-23 -> 65 tok/s (= no -bs), 8k 292 -> 367 | none | pending merge [17] |
 
 Footnotes:
 
@@ -148,6 +151,18 @@ Footnotes:
     graph launch; 3.5-5 ms), per-row routing readback (1.1 ms), sync and copy issue gaps (~2 ms). The
     first pair of the A/B ran right after a vLLM model had held the GPUs (both arms slow, 45-53
     shallow) and is excluded; results in local/results/bellsrb.
+17. Host CPU profile (local/bench/hostprof.sh, perf with dwarf call graphs; needs
+    kernel.perf_event_paranoid <= 1 in the guest, restored to 4 after): per ~40 ms pass the host
+    waits in cudaStreamSynchronize 79%; token sampling 7.4% (~3 ms, GPU idle), graph compute setup
+    6.3% of which ggml_cuda_graph_update_required 2.6% (views had uid 0 so every node was re-compared
+    on each of ~50 launches) and cudaGraphLaunch 1.3% (~10 us per launch; nsys node trace inflated it
+    to ~48 us), BELLS callback 5.0% (on_routing 2.1%). The graph-level nsys trace put the resume gap
+    per layer at ~58 us without copies (wake 6 + host ~43 + launch overlap). With --backend-sampling
+    the server's llama_set_sampler(nullptr) on slot reset re-reserved the scheduler twice per request
+    (sched_reserve with cudaMallocHost/cudaFreeHost of the pinned CPU compute buffer). The first
+    sampler-reserve commit alone (skip on identical chain) had no effect; the removal path was the
+    trigger. Short prompts of 25-31 tokens run experts on CPU by design (BELLS serves ubatch <= 24,
+    op offload starts at 32).
 
 ### Costs and downsides of what we kept
 

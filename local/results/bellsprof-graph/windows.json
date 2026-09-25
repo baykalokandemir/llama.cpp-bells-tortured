@@ -1,0 +1,32 @@
+[
+ {
+  "case": "warmup",
+  "end_ns": 1790369601204522496,
+  "decode_ms": 1754.624,
+  "n_gen": 64,
+  "draft_n": 49,
+  "draft_acc": 38,
+  "decode_tps": 35.90512839217975,
+  "prompt_n": 31
+ },
+ {
+  "case": "shallow",
+  "end_ns": 1790369607038455199,
+  "decode_ms": 5040.288,
+  "n_gen": 300,
+  "draft_n": 248,
+  "draft_acc": 175,
+  "decode_tps": 59.32200699642561,
+  "prompt_n": 31
+ },
+ {
+  "case": "shallow2",
+  "end_ns": 1790369612572409684,
+  "decode_ms": 4935.308,
+  "n_gen": 300,
+  "draft_n": 248,
+  "draft_acc": 175,
+  "decode_tps": 60.58385819081605,
+  "prompt_n": 31
+ }
+]

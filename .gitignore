@@ -157,3 +157,4 @@ AGENTS.local.md
 # local experiment artifacts: nsys reports and exported sqlite are too large for git
 local/results/**/*.nsys-rep
 local/results/**/*.sqlite
+local/results/**/perf.data

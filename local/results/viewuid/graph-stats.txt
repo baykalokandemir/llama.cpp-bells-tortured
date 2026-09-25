@@ -1,0 +1,4 @@
+on1 cuda_graph_stats: calls=32000 eager=3109 capture=605 replay=28286 warmup_reset=262 uid_reuse=26276
+off1 cuda_graph_stats: calls=32000 eager=3109 capture=605 replay=28286 warmup_reset=262 uid_reuse=526
+off2 cuda_graph_stats: calls=32000 eager=3109 capture=605 replay=28286 warmup_reset=262 uid_reuse=526
+on2 cuda_graph_stats: calls=32000 eager=3058 capture=605 replay=28337 warmup_reset=262 uid_reuse=26326

@@ -1,3 +1,12 @@
+# Experiment log: Qwen3.8-Flash-Next on 2x RTX 5060 Ti
+
+This directory is the lab notebook for the fork (see the top-level README.md for the overview).
+`bench/` holds the benchmark and profiling scripts, `results/` the raw outputs they wrote
+(JSON per run, server logs, summaries; nsys reports are not committed). The notes were written
+while working, so they cite a private knowledge base ("claim NN", "kb topic ...") and paths on
+the author's machines (magi = Proxmox host, wintermute = the GPU VM, /home/god, /opt/stacks).
+Those are not part of this repo; the numbers and conclusions here stand on their own.
+
 ## Everything we tried (2026-09-04 .. 2026-09-25)
 
 Model: ISTA-DASLab Qwen3.8-Flash-Next GSQ-RCO IQ3_XXS (from 2026-09-22 the local HCQ8 variant), arch
@@ -79,10 +88,13 @@ Numbers from different sessions are not directly comparable (page-cache regime, 
 | Guest proactive compaction off | vm.compaction_proactiveness=0 | bimodal ~40/48/58 ms/pass -> 40.1-41.5 ms/pass (57.4-59.4 tok/s) after 1st request | not measured | none | adopted [12] |
 | VM 32 -> 48 vCPU | Proxmox | fast state ~42 -> ~40 ms/pass (not isolated) | not measured | none | adopted (not isolated) |
 | Thread count | -t 4/8/32/48, -tb 32 | irrelevant: -t 8 56.9, -t 48 56.0 vs -t 32 56.9 | not measured | none | neutral |
-| **In progress** | | | | | |
+| **Long-context decode (64k config, 2026-09-25)** | | | | | |
 | Sparse FA with Q8_0 KV: convert only listed rows | fa-sparse-q8 (merged), GGML_CUDA_FA_SPARSE_ALL_ROWS=1 disables | 61k 49.6/50.9 -> 55.8/57.3 (+12.5%), 32k +5%, 16k +4% (64k ctx, 1 pair) | unchanged | none (full F16 buffer still allocated) | adopted [13] |
 | Indexer top-k over blocks -> replaced by short-row get_rows kernel | getrows-small (merged), GGML_CUDA_GET_ROWS_SMALL=0 disables | ms/pass 61k 48.3 -> 45.3 (-6%), 32k -2.7%, <=16k none | unchanged | none | adopted [14] |
 | PR #28699 pooled-key cache | LLAMA_QSA_NO_POOLED_CACHE=1 disables (ac3af2fc1) | 61k 43.8 -> 49.8 (+13.8%), 32k +4.1%, 8-16k +2-3% (64k ctx, 2 pairs) | unchanged (345-380) | ~50 MiB per GPU | adopted |
+| GPU peer-to-peer access | GGML_CUDA_P2P=1 (patched 610 driver) | none: shallow 64.6 both, 8k/32k within noise (2 pairs) | none (358-368) | none | neutral (off) |
+| **GPU-side expert cache (#12, in progress)** | | | | | |
+| GenerelSchwerz moe-cache fork instead of BELLS | --moe-expert-cache-size 200, grouped decode + CUDA graphs | shallow 47-48 (200 slots), 51.6 (240 slots) vs ~62-64 BELLS; 8k 46.2; hit rate ~84% vs ~98% | 8k 419 vs ~368 | 240 slots OOM at 8k prompt | open (fork lacks our patches; same-session BELLS arm and overlap flags pending) |
 
 Footnotes:
 
@@ -150,12 +162,14 @@ Only adopted (or about-to-be-adopted) changes are listed; rejected attempts cost
 
 ### Recap
 
-- Current build: `main` at 51a7b1b1d = BELLS + PR #28243 MTP + AVX2 Q2_0 + chunked QSA indexer +
-  LLAMA_DRAFT_UBATCH + shape-keyed CUDA graphs + mmvf fallback + FR-Spec draft vocab.
+- Current build: `main` = BELLS + PR #28243 MTP + AVX2 Q2_0 + chunked QSA indexer + LLAMA_DRAFT_UBATCH +
+  shape-keyed CUDA graphs + mmvf fallback + FR-Spec draft vocab + PR #28699 pooled-key cache +
+  sparse FA Q8_0 row conversion + short-row get_rows.
 - Current test config (not yet in llama-swap): HCQ8, 64k Q8_0 KV, 240 slots, -ub 2048 with op offload, --cpu-moe-pinned,
   MTP head on CUDA1 depth 2, -lzm off, FR-Spec top 64k, guest compaction off.
-- Its numbers: shallow decode ~60-61 tok/s (FR-Spec arms); real-text depth 59/57/54/50/41 at
-  0/8k/16k/32k/60k (measured before hc-mmvf, FR-Spec and the compaction fix); prefill 340-380 tok/s.
+- Its numbers (2026-09-25, current main): shallow decode ~62-65 tok/s; real-text depth 63-64 at 8k,
+  58-64 at 16k, 57-63 at 32k, 55-60 at 61k (was 44-45 at 61k before the three depth fixes);
+  prefill 340-380 tok/s.
 - 128k works at 230 slots: 8k prefill 369-372, 110k prompt 263 tok/s, decode 56-61 at 8k, 25.8 at 110k.
 - Decode-only 32k variant (298 slots, -ub 128, no op offload): 61.62 tok/s, prefill ~80-90.
 - Changes that mattered most: BELLS over static placement (+9.5%), MTP with the head on GPU1
@@ -165,9 +179,9 @@ Only adopted (or about-to-be-adopted) changes are listed; rejected attempts cost
 - Noise or confounds: claim 100's +10.7% graph-key gain (retracted, PLE warmth/order); the bimodal
   decode (guest compaction, not threads or flags); page-cache regime shifts of ~7%; server A/Bs of
   numerics changes (text and acceptance move).
-- Open: pooled-key cache (PR #28699); per-pass cost growth with depth (~40 -> ~65 ms at 60k) not
-  attributed; HCQ8 quality (KLD) unmeasured; needle/concurrency suite reruns; slow short-prompt
-  prefill anomaly; depth curve re-measure on the current build.
+- Open: GPU-side expert-cache control (#12, moe-cache fork A/B above); remaining per-pass growth
+  with depth; HCQ8 quality (KLD) unmeasured; needle/concurrency suite reruns; slow short-prompt
+  prefill anomaly; a third GPU (RTX 3060, sm_86) is planned.
 
 
 ## Experiment: --spec-draft-p-min x draft depth (2026-09-24)
@@ -194,7 +208,7 @@ and llama.cpp keeps only the last built graph. "graphs reused" per 300-token req
 p_min is not usable until graphs for several batch shapes are cached. Single-sample depth points
 (8k/32k) are noisy; the shallow baseline itself spreads 39.6-57.8 across prompts.
 Full table: local/results/pmin-summary.txt.
-# graph-cache branch notes (2026-09-24)
+## graph-cache branch notes (2026-09-24)
 
 Branch `graph-cache` = qsa-slim + two CUDA commits:
 - `GGML_CUDA_GRAPH_STATS=1` prints eager/capture/replay counts of graph_compute calls (debug).
@@ -233,11 +247,6 @@ Results: local/results/{ple-*,ab-*,pw-*,d-*}.
 - Thread count (-t 32/8/4/8/32, -tb 32, -lzm off) does not explain the bimodal decode: run means
   48.1 / 47.1 / 52.6 / 50.9 / 51.4 tok/s; repeats of the same -t differ as much as different -t.
   The first request on a fresh server is often slow (39-41), consistent with BELLS cache warm-up.
-
-## PLE n-gram history after rejected drafts (ik PR #2460 check, 2026-09-24)
-
-Not affected. qwen4exp PLE takes n-gram predecessors from the attention KV cells by position
-(llama_kv_cache::get_prev_tokens -> seq_pos_tok_le), so a rejected drafts cells are simply rewritten.
 
 ## PLE n-gram history after rejected drafts (ik PR #2460 check, 2026-09-24)
 

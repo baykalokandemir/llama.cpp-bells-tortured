@@ -115,7 +115,7 @@ Footnotes:
 
 - Current build: `main` at 51a7b1b1d = BELLS + PR #28243 MTP + AVX2 Q2_0 + chunked QSA indexer +
   LLAMA_DRAFT_UBATCH + shape-keyed CUDA graphs + mmvf fallback + FR-Spec draft vocab.
-- Current serving config: HCQ8, 64k Q8_0 KV, 240 slots, -ub 2048 with op offload, --cpu-moe-pinned,
+- Current test config (not yet in llama-swap): HCQ8, 64k Q8_0 KV, 240 slots, -ub 2048 with op offload, --cpu-moe-pinned,
   MTP head on CUDA1 depth 2, -lzm off, FR-Spec top 64k, guest compaction off.
 - Its numbers: shallow decode ~60-61 tok/s (FR-Spec arms); real-text depth 59/57/54/50/41 at
   0/8k/16k/32k/60k (measured before hc-mmvf, FR-Spec and the compaction fix); prefill 340-380 tok/s.

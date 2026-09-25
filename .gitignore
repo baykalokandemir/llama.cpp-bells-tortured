@@ -153,3 +153,7 @@ a.out.*
 
 AGENTS.local.md
 .pi/SYSTEM.md
+
+# local experiment artifacts: nsys reports and exported sqlite are too large for git
+local/results/**/*.nsys-rep
+local/results/**/*.sqlite

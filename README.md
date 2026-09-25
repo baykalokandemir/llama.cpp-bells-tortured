@@ -1,266 +1,91 @@
-# BELLS
+# llama.cpp-qsa: Qwen3.8-Flash-Next at 60+ tok/s on two 16 GB GPUs
 
-**Run 177B models on a single GPU. No quality loss.**
+This is a llama.cpp fork tuned for one model on one machine: **Qwen3.8-Flash-Next** (arch
+`qwen4exp`, ~177B MoE with 512 experts / top-10, DeltaNet + sparse-attention (QSA) layers,
+hyper-connections, a 27 GB per-layer-embedding table), quantized as ISTA-DASLab GSQ-RCO IQ3_XXS,
+running on **2x RTX 5060 Ti 16 GB + an EPYC 7K62 (Zen 2) with 94 GB RAM**, batch 1.
 
-BELLS is a [llama.cpp](https://github.com/ggml-org/llama.cpp) fork that adds a per-layer VRAM expert cache for Mixture-of-Experts models. Instead of keeping all experts in VRAM (impossible) or running them on the CPU (slow), BELLS caches the hot experts on your GPU and streams the rest from RAM or NVMe on demand. Every expert the router picks still gets computed — nothing is skipped or approximated.
+It stacks three things on top of llama.cpp master:
 
-### What you get
+1. **BELLS**, a per-layer VRAM expert cache for MoE models (by danielguckert4-droid; its original
+   README is kept in [docs/BELLS.md](docs/BELLS.md)).
+2. **MTP speculative decoding** from upstream PR #28243, with the Unsloth shared MTP head placed
+   entirely on the second GPU.
+3. About a dozen local patches and cherry-picks, each measured on its own (listed below).
 
-| model | GPU | without BELLS | with BELLS |
-|---|---|---:|---:|
-| Qwen3.6-35B Q4 | RTX 3060 12 GB | 32.5 tok/s | **60.9 tok/s** |
-| Qwen3.6-35B Q4 | RTX 2060 6 GB | — | **36.3 tok/s** |
-| Flash-Next 177B Q2 | RTX 3060 12 GB | 14.7 tok/s | **32.9 tok/s** |
+| | Start (2026-09-21, static expert placement) | Now (`main`, 64k context) |
+|---|---:|---:|
+| Decode, short prompt | 34.8 tok/s | **62-65 tok/s** |
+| Decode at 32k / 61k context | - | 57-63 / 55-60 tok/s |
+| Prefill (8k-61k prompt) | 162-246 tok/s | 340-380 tok/s |
 
-32 GB DDR4, models streamed from NVMe. The 177B doesn't even fit in RAM.
+## Where to look
 
-### Build
-
-```sh
-# NVIDIA
-cmake -B build -DGGML_CUDA=ON && cmake --build build --config Release
-
-# AMD / Intel / any Vulkan GPU
-cmake -B build -DGGML_VULKAN=ON && cmake --build build --config Release
-```
-
-### Use
-
-```sh
-# just works — auto-sizes the cache to your VRAM
-llama-server -m model.gguf -ngl 99 --cpu-moe --bells -fa
-
-# or set the cache size yourself
-llama-server -m model.gguf -ngl 99 --cpu-moe --bells-slots 80 -fa -c 4096
-
-# pinned memory is faster when the model fits in RAM
-llama-server -m model.gguf -ngl 99 --cpu-moe-pinned --bells-slots 80 -fa -c 4096
-```
-
-`--bells-slots` controls how many experts per layer stay resident on the GPU. More slots = more VRAM = fewer misses = faster. Start high and lower it if you run out of memory.
-
-**Note:** `-ot` rules must come **before** `--cpu-moe` on the command line. The first matching override wins, so an `-ot` placed after `--cpu-moe` is silently ignored.
-
-| VRAM | start with |
+| Path | What it is |
 |---|---|
-| 6 GB | `--bells-slots 30` |
-| 8 GB | `--bells-slots 60` |
-| 12 GB | `--bells-slots 100` |
-| 16 GB | `--bells-slots 120` |
-| 24 GB | `--bells-slots 200` |
+| [local/README.md](local/README.md) | The lab notebook: **a table of every attempt** (kept and rejected) with its decode, prefill and VRAM effect, footnotes, the costs/downsides of each kept change, and a recap. Start here. |
+| [local/bench/](local/bench) | Benchmark and profiling scripts (A/B drivers, nsys kernel attribution, depth curves). They hardcode the author's model paths; `depthcurve2.sh` takes `BIN`, `MODEL`, `OUT`, `FILLER` env vars. |
+| [local/results/](local/results) | Raw outputs: per-run JSON, server logs, summaries. |
+| `git log --author=god main` | The local commits. Code commits are prefixed by subsystem (`cuda:`, `qwen4exp`, `bells :`), notes and results by `local:`. |
 
-### All flags
+## Local changes on `main`
 
-| flag | description |
-|---|---|
-| `--cpu-moe` | Keep all MoE expert weights on the CPU. Required for BELLS. |
-| `--cpu-moe-pinned` | Like `--cpu-moe`, but pin expert weights in host memory (no mmap). Faster copies, but the model must fit in RAM. Don't use when streaming from NVMe. |
-| `--bells` | Enable BELLS with auto-sized cache (equivalent to `--bells-slots -1`). |
-| `--bells-slots N` | Cache N experts per layer in VRAM. `-1` to auto-size from free VRAM. More slots = more VRAM = fewer misses. |
-| `--bells-l2-slots N` | Use a secondary GPU's VRAM as L2 victim cache. N experts per layer on GPU 2. `-1` to auto-size. Single-GPU systems ignore this. |
-| `--bells-split K` | Run K of each token's experts on GPU, the rest on CPU concurrently. The MoE output is a weighted sum, so splitting is exact — no quality loss. Fewer experts need to be resident, so the cache covers more. Default: 0 (all experts through the cache). |
-| `--bells-refresh N` | Observe a rotating 1/N of MoE layers per token instead of every layer. Reduces graph split overhead (~2.3 ms/token across 32 layers). Default: 1 (observe every layer). |
-| `--bells-passive` | Research only. Allocate the cache and take the graph splits, but copy nothing and leave matmuls on the full expert stack. Measures mechanism overhead in isolation. |
+| Change | Commit / switch | Effect (decode unless noted) |
+|---|---|---|
+| AVX2 `Q2_0` vec_dot for Zen 2 (no VNNI) | 251288429 | +14-21% when experts run on CPU |
+| `BELLS_HOST_ONLY`: cache only host-resident layers | cb92ae21e | neutral, kept as an option |
+| Chunked QSA indexer scoring | 7e6b26317, `LLAMA_QSA_CHUNK` | 128k prefill ~3x, compute buffer -1.6 GB |
+| Cap MTP draft-context ubatch | 60a79a76e, `LLAMA_DRAFT_UBATCH` | lets 128k + `-ub 2048` + MTP fit |
+| CUDA graphs keyed by node count and first/last shape | b2d148fb2 | removes re-captures with variable batch shapes |
+| mmvf for 16-512-row weights that mmf rejects | 9f14ee5b7, `GGML_CUDA_MMVF_FALLBACK_MIN_ROWS` | +3.5% (fixed-token bench) |
+| FR-Spec: MTP drafts over the 64k most frequent tokens | 3b47dd11e, `LLAMA_MTP_VOCAB`, `LLAMA_MTP_VOCAB_N` | +3.0-3.5% |
+| Incremental pooled-key cache for the QSA indexer (upstream PR #28699) | ac3af2fc1, `LLAMA_QSA_NO_POOLED_CACHE=1` disables | +13.8% at 61k |
+| Sparse flash attention with Q8_0 KV: convert only the selected rows to F16 | fa-sparse-q8 merge, `GGML_CUDA_FA_SPARSE_ALL_ROWS=1` disables | +12.5% at 61k |
+| One-element-per-thread `get_rows` for rows of <= 32 elements | getrows-small merge, `GGML_CUDA_GET_ROWS_SMALL=0` disables | -6% ms/pass at 61k |
 
-BELLS only helps MoE models (Qwen3-30B-A3B, Qwen3.6-35B, DeepSeek-V3, Flash-Next, etc). Dense models are unaffected.
+Rejected attempts (tensor parallel, n-gram drafting, draft p_min, `-ub 4096`, F16 KV, split
+GPU/CPU experts, and others) are in the table in local/README.md with the reason for each.
 
-### Multi-GPU (L2 cache)
-
-Got a second GPU? BELLS can use its VRAM as overflow cache space. All compute stays on GPU 1 — the second GPU just donates its memory.
-
-```sh
-# auto-size from GPU 2's free VRAM
-llama-server -m model.gguf -ngl 99 --cpu-moe --bells-slots 80 --bells-l2-slots -1 -fa
-
-# or set L2 size explicitly
-llama-server -m model.gguf -ngl 99 --cpu-moe --bells-slots 80 --bells-l2-slots 200 -fa
-```
-
-When an expert gets evicted from the primary cache (L1), it goes to L2 on the second GPU instead of being thrown away. Next time that expert is needed, it comes back from GPU 2 VRAM — a deterministic copy, not a page fault from NVMe. On a system where the model is streaming from disk, this is the difference between microseconds and milliseconds.
-
-### How it works
-
-```
-                    ┌─────────────────────────────────────────┐
-                    │              BELLS cache                │
-                    │                                         │
-  Router picks   ┌──────────┐  evict   ┌──────────┐         │
-  expert E       │ L1 cache │ ──────── │ L2 cache │         │
-  ─────────────▶ │  GPU 1   │ ◀─────── │  GPU 2   │         │
-                 │ (compute)│ promote  │ (storage)│         │
-                 └──────────┘          └──────────┘         │
-                      │ miss               │ miss            │
-                      │                    │                 │
-                      ▼                    ▼                 │
-                 ┌──────────┐        ┌──────────┐           │
-                 │ Host RAM │        │  (skip)  │           │
-                 │ or NVMe  │        │          │           │
-                 └──────────┘        └──────────┘           │
-                 (may page fault)                            │
-                 └─────────────────────────────────────────┘
-```
-
-**BELLS is a per-layer VRAM expert cache.** MoE models have hundreds of expert weight matrices spread across dozens of layers, but the router only picks 2–8 per token. Most experts sit idle. BELLS keeps the hot ones in GPU VRAM and streams the rest on demand.
-
-#### The cache hierarchy
-
-1. **L1 (primary GPU)** — the working cache. Experts are loaded here for compute. Sized by `--bells-slots`. Uses LRU eviction with per-layer clock counters.
-
-2. **L2 (secondary GPU)** — a victim cache. When L1 evicts an expert, it goes to L2 instead of being discarded. L2 uses its own LRU policy. Sized by `--bells-l2-slots` (or `-1` for auto, which leaves 512 MB headroom on GPU 2).
-
-3. **Host memory** — the cold tier. Models backed by mmap. Page faults here are the most expensive operation — especially when the model doesn't fit in RAM and pages from NVMe.
-
-#### Data flow for a single expert load
-
-```
-Token arrives → Router selects experts → For each expert not in L1:
-
-  1. EVICTION:  Read victim from L1 slot → staging buffer → write to L2 slot
-                (GPU1 VRAM → host pinned → GPU2 VRAM)
-
-  2. L2 CHECK:  Look up requested expert in L2 index
-                  HIT  → read from L2 → staging → write to L1 slot → done
-                  MISS → fall through to cold path
-
-  3. COLD PATH: Read from host mmap → write to L1 slot
-                (may page fault from NVMe — this is what L2 eliminates)
-```
-
-The staging buffer is a host-side pinned allocation sized to one expert. The eviction read happens **before** the slot is overwritten, so it's always a clean VRAM read — no page faults, no blocking.
-
-#### Key design decisions
-
-- **No compute on GPU 2.** The matmul graph only ever references L1 slots. GPU 2 is invisible to the compute path — it's a dumb buffer with a lookup table.
-- **Per-layer indexing.** Each layer maintains its own L2 slot map (`expert → slot`). This matches the L1 design and avoids cross-layer eviction interference.
-- **Victim cache semantics.** L2 only receives data evicted from L1 (or promoted back). It never loads directly from host. This keeps the L2 population naturally tuned to the model's access pattern.
-- **Backward compatible.** On a single-GPU system, L2 is a no-op. The `bells_copy` struct gained an `evicted` field with a default of `-1`, so all existing code paths are unchanged.
-- **Stats tracking.** BELLS reports L1 hit rate, L2 hit rate, total admits, and total promotions. When L2 is enabled, the periodic timing output shows both tiers.
-
----
-
-# llama.cpp
-
-![llama](https://raw.githubusercontent.com/ggml-org/llama.brand/refs/heads/master/cover/llama-cpp/cover-llama-cpp-dark.svg)
-
-<div align="center">
-
-<b>LLM inference in C/C++</b>
-
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://opensource.org/licenses/MIT)
-[![Release](https://img.shields.io/github/v/release/ggml-org/llama.cpp?filter=v*&color=brightgreen)](https://github.com/ggml-org/llama.cpp/releases?q=tag:v0)
-[![Nightly](https://img.shields.io/github/v/release/ggml-org/llama.cpp?label=nightly&filter=b*&color=orange)](https://github.com/ggml-org/llama.cpp/releases?q=b)
-[![Server](https://img.shields.io/github/actions/workflow/status/ggml-org/llama.cpp/server.yml?label=Server)](https://github.com/ggml-org/llama.cpp/actions/workflows/server.yml)
-[![Docker](https://img.shields.io/github/actions/workflow/status/ggml-org/llama.cpp/docker.yml?label=Docker)](https://github.com/ggml-org/llama.cpp/actions/workflows/docker.yml)
-[![Winget](https://img.shields.io/github/actions/workflow/status/ggml-org/llama.cpp/winget.yml?label=Winget)](https://github.com/ggml-org/llama.cpp/actions/workflows/winget.yml)
-
-[ggml](https://github.com/ggml-org/ggml) / [ops](https://github.com/ggml-org/llama.cpp/blob/master/docs/ops.md) / [maintainer PRs](https://github.com/ggml-org/llama.cpp/issues?q=is%3Apr%20is%3Aopen%20draft%3AFalse%20(author%3Argerganov%20OR%20author%3AKitaitiMakoto%20OR%20author%3Adanbev%20OR%20author%3Aaldehir%20OR%20author%3Amax-krasnyansky%20OR%20author%3ACISC%20OR%20author%3Aggerganov%20OR%20author%3Aam17an%20OR%20author%3Ajhen0409%20OR%20author%3Abartowski1182%20OR%20author%3Anikwen%20OR%20author%3Ahipudding%20OR%20author%3Aravi9%20OR%20author%3AServeurpersoCom%20OR%20author%3Apwilkin%20OR%20author%3Areeselevine%20OR%20author%3Angxson%20OR%20author%3Ajeffbolznv%20OR%20author%3Amarty1885%20OR%20author%3A0cc4m%20OR%20author%3ATitaniumtown%20OR%20author%3Aangt%20OR%20author%3AIMbackK%20OR%20author%3Aarthw%20OR%20author%3AJohannesGaessler%20OR%20author%3AORippler%20OR%20author%3Aruixiang63%20OR%20author%3Axctan%20OR%20author%3Aallozaur%20OR%20author%3Ayomaytk%20OR%20author%3Aaendk%20OR%20author%3Awine99%20OR%20author%3Agaugarg-nv%20OR%20author%3Ataronaeo%20OR%20author%3Aforforever73%20OR%20author%3Alhez%20OR%20author%3Anetrunnereve%20OR%20author%3Afairydreaming)%20sort%3Aupdated-desc) / [dev stats](https://github.com/ggml-org/llama.cpp-dev) / [lib llama API](https://github.com/ggml-org/llama.cpp/issues/9289) / [llama-server REST API](https://github.com/ggml-org/llama.cpp/issues/9291)
-
-</div>
-
-## Quick start
-
-A few options to get `llama.cpp` installed on your machine:
-
-- Visit https://llama.app and follow the instructions
-- Run with Docker - see our [Docker documentation](docs/docker.md)
-- Download pre-built binaries from the [releases page](https://github.com/ggml-org/llama.cpp/releases)
-- Build from source by cloning this repository - check out [our build guide](docs/build.md)
-
-Once installed:
+## Build
 
 ```sh
-# Download and run a model directly from Hugging Face
-llama cli -hf ggml-org/Qwen3.5-0.8B-GGUF
-
-# Launch OpenAI-compatible API server
-llama serve -hf ggml-org/Qwen3.5-0.8B-GGUF
+cmake -B build -DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=120 -DCMAKE_BUILD_TYPE=Release
+cmake --build build -j
 ```
 
-<table align="center">
-    <tr>
-        <td align="center" width=50%>
-            <img width="1310" height="888" alt="VLM session with `llama cli`" src="https://github.com/user-attachments/assets/88726b48-1713-48aa-a525-95a02e78afc4" />
-            <i>VLM session with <b>llama cli</b></i>
-        </td>
-        <td align="center">
-            <img width="1392" height="958" alt="Built-in web UI against `llama serve` running Qwen 3.6" src="https://github.com/user-attachments/assets/b402f972-2e32-4def-8771-8d849f08cf2e" />
-            <i>Built-in web UI against <b>llama serve</b></i>
-        </td>
-    </tr>
-<table>
+Only sm_120 (Blackwell consumer) has been measured. The CPU side assumes AVX2.
 
-## Description
+## Run (the 64k test config)
 
-The main goal of `llama.cpp` is to enable LLM (and VLM) inference with minimal setup and state-of-the-art performance on
-a wide range of hardware - locally and in the cloud.
+```sh
+LLAMA_DRAFT_UBATCH=256 \
+LLAMA_MTP_VOCAB=local/results/fr/rank.ids LLAMA_MTP_VOCAB_N=65536 \
+build/bin/llama-server -m Qwen3.8-Flash-Next-GSQ-RCO-IQ3_XXS-HCQ8-00001-of-00002.gguf \
+  -md mtp-Qwen3.8-Flash-Next-shared-Q4_K_M.gguf --spec-type draft-mtp --spec-draft-n-max 2 \
+  -devd CUDA1 -ngld 99 \
+  -ngl 99 -sm layer -ts 28,20 --cpu-moe-pinned --bells-slots 240 \
+  -c 65536 -fa on -ctk q8_0 -ctv q8_0 -ub 2048 -b 2048 \
+  -lm mmap -lzm off -t 32 -tb 32 --fit off --parallel 1 --jinja
+```
 
-- Plain C/C++ implementation without any dependencies
-- Apple silicon is a first-class citizen - optimized via ARM NEON, Accelerate and Metal frameworks
-- AVX, AVX2, AVX512 and AMX support for x86 architectures
-- RVV, ZVFH, ZFH, ZICBOP and ZIHINTPAUSE support for RISC-V architectures
-- 1.5-bit, 2-bit, 3-bit, 4-bit, 5-bit, 6-bit, and 8-bit integer quantization for faster inference and reduced memory use
-- Custom CUDA kernels for running LLMs on NVIDIA GPUs (support for AMD GPUs via HIP and Moore Threads GPUs via MUSA)
-- Vulkan and SYCL backend support
-- CPU+GPU hybrid inference to partially accelerate models larger than the total VRAM capacity
+- `--bells-slots 240`: experts per layer kept in VRAM (~98% hit rate here). Set it by hand; auto-sizing
+  left 7 GB unused.
+- `--cpu-moe-pinned` locks ~41 GB of host RAM and makes loading take ~1 minute.
+- `-lzm off` keeps the 27 GB PLE table in page cache, so RAM, not disk, is the limit.
+- HCQ8 is a local requant of the shipped IQ3_XXS file with hyper-connection weights in Q8_0
+  instead of BF16 (+9.7% decode, -560 MiB VRAM). Its quality (KLD) has not been measured.
+- `rank.ids` is the FR-Spec token ranking for this tokenizer (English prose and code weighted).
+- Inside the VM, `vm.compaction_proactiveness=0` removed a bimodal decode speed (see the notebook).
 
-The `llama.cpp` project is build on top of the [ggml](https://github.com/ggml-org/ggml) library.
+## Caveats
 
-## Supported backends
+- Numbers are from one machine, batch 1, greedy decoding, and move a few percent between sessions
+  (page cache, run order); the notebook says which comparisons were same-session A/Bs.
+- The pooled-key cache is an unmerged upstream PR and works for a single stream only.
+- The notebook cites a private knowledge base ("claim NN") and paths on the author's hosts; those
+  are not included.
 
-| Backend | Target devices |
-| --- | --- |
-| [BLAS](docs/build.md#blas-build) | All |
-| [BLIS](docs/backend/BLIS.md) | All |
-| [CANN](docs/build.md#cann) | Ascend NPU |
-| [CUDA](docs/build.md#cuda) | Nvidia GPU |
-| [HIP](docs/build.md#hip) | AMD GPU |
-| [Hexagon](docs/backend/snapdragon/README.md) | Snapdragon |
-| [IBM zDNN](docs/backend/zDNN.md) | IBM Z & LinuxONE |
-| [MUSA](docs/build.md#musa) | Moore Threads GPU |
-| [Metal](docs/build.md#metal-build) | Apple Silicon |
-| [OpenCL](docs/backend/OPENCL.md) | Adreno GPU |
-| [OpenVINO [In Progress]](docs/backend/OPENVINO.md) | Intel CPUs, GPUs, and NPUs |
-| [RPC](https://github.com/ggml-org/llama.cpp/tree/master/tools/rpc) | All |
-| [SYCL](docs/backend/SYCL.md) | Intel GPU |
-| [VirtGPU](docs/backend/VirtGPU.md) | VirtGPU APIR |
-| [Vulkan](docs/build.md#vulkan) | GPU |
-| [WebGPU](docs/build.md#webgpu) | All |
-| [ZenDNN](docs/build.md#zendnn) | AMD CPU |
+## Upstream
 
-## Documentation
-
-#### Tools
-
-- [cli](tools/cli/README.md)
-- [completion](tools/completion/README.md)
-- [server](tools/server/README.md)
-- [GBNF grammars](grammars/README.md)
-
-#### Development
-
-- [How to build](docs/build.md)
-- [Running on Docker](docs/docker.md)
-- [Build on Android](docs/android.md)
-- [Multi-GPU usage](docs/multi-gpu.md)
-- [Performance troubleshooting](docs/development/token_generation_performance_tips.md)
-- [GGML tips & tricks](https://github.com/ggml-org/llama.cpp/wiki/GGML-Tips-&-Tricks)
-- [XCFramework](docs/xcframework.md)
-- [Completions](docs/completions.md)
-- [Models](docs/models.md)
-- [Release process](docs/release.md)
-
-## Contributing
-
-- Contributors can open PRs
-- Collaborators will be invited based on contributions
-- Maintainers can push to branches in the `llama.cpp` repo and merge PRs into the `master` branch
-- Any help with managing issues, PRs and projects is very appreciated!
-- Read the [CONTRIBUTING.md](CONTRIBUTING.md) for more information
-
-## Acknowledgements
-
-- [yhirose/cpp-httplib](https://github.com/yhirose/cpp-httplib) - Single-header HTTP server, used by `llama-server` - MIT license
-- [nothings/stb](https://github.com/nothings/stb) - Single-header image format decoder, used by multimodal subsystem - Public domain
-- [nlohmann/json](https://github.com/nlohmann/json) - Single-header JSON library, used by various tools/examples - MIT License
-- [mackron/miniaudio](https://github.com/mackron/miniaudio) - Single-header audio format decoder, used by multimodal subsystem - Public domain
-- [sheredom/subprocess.h](https://github.com/sheredom/subprocess.h) - Single-header process launching solution for C and C++ - Public domain
+- llama.cpp: https://github.com/ggml-org/llama.cpp (MIT, see LICENSE)
+- BELLS original README: [docs/BELLS.md](docs/BELLS.md)

@@ -1,0 +1,42 @@
+[
+ {
+  "case": "warmup",
+  "end_ns": 1790348199147211524,
+  "decode_ms": 1955.858,
+  "n_gen": 64,
+  "draft_n": 49,
+  "draft_acc": 38,
+  "decode_tps": 32.21092737816345,
+  "prompt_n": 31
+ },
+ {
+  "case": "shallow",
+  "end_ns": 1790348206727372676,
+  "decode_ms": 6939.354,
+  "n_gen": 300,
+  "draft_n": 248,
+  "draft_acc": 175,
+  "decode_tps": 43.08758423334506,
+  "prompt_n": 31
+ },
+ {
+  "case": "depth8192",
+  "end_ns": 1790348235536534194,
+  "decode_ms": 4016.131,
+  "n_gen": 200,
+  "draft_n": 139,
+  "draft_acc": 129,
+  "decode_tps": 49.55017652561632,
+  "prompt_n": 8222
+ },
+ {
+  "case": "depth61440",
+  "end_ns": 1790348436387396035,
+  "decode_ms": 4452.278,
+  "n_gen": 200,
+  "draft_n": 145,
+  "draft_acc": 126,
+  "decode_tps": 44.69622067624708,
+  "prompt_n": 61470
+ }
+]

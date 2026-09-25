@@ -3531,9 +3531,22 @@ static int ggml_cuda_try_fuse(ggml_backend_cuda_context * cuda_ctx, ggml_cgraph 
 
     ggml_tensor * node = cgraph->nodes[i];
 
-    if (node->op == GGML_OP_MUL) {
+    // GGML_CUDA_MOE_WR_FUSION=0 disables only the MoE weighted-reduction fusion (issue #29168 reports
+    // it changing speculative-decoding acceptance on a MoE model).
+    static const bool moe_wr_fusion = [] {
+        const char * s = getenv("GGML_CUDA_MOE_WR_FUSION");
+        return !s || s[0] != '0';
+    }();
+
+    if (moe_wr_fusion && node->op == GGML_OP_MUL) {
         ggml_cuda_moe_weighted_reduction_match match;
         if (ggml_cuda_match_moe_weighted_reduction(cgraph, i, match)) {
+            static bool logged = false;
+            if (!logged && getenv("GGML_CUDA_MOE_WR_LOG")) {
+                logged = true;
+                GGML_LOG_INFO("%s: MoE weighted-reduction fusion matched at node %d (%s), %d nodes\n",
+                              __func__, i, node->name, match.node_count);
+            }
             const int output_idx = i + match.node_count - 1;
             if (ggml_cuda_check_fusion_memory_ranges(cgraph, i, match.node_count, &output_idx, 1)) {
                 ggml_cuda_op_moe_weighted_reduction(

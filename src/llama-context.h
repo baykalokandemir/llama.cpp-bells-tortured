@@ -302,6 +302,9 @@ private:
     ggml_backend_ptr bells_copy_backend;
     ggml_backend_ptr bells_l2_backend;
 
+    // bells_eval: scratch for reading all routing rows in one copy
+    std::vector<int32_t> bells_rb_span;
+
     llama_memory_ptr memory;
 
     // decode output (2-dimensional array: [n_outputs][n_vocab])

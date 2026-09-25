@@ -1906,9 +1906,30 @@ bool llama_context::bells_eval(ggml_tensor * t, bool ask) {
 
         // This is the device->host sync that splits the graph at every MoE layer. Timed
         // separately from the copies because it is paid whether or not anything misses.
+        //
+        // Each ggml_backend_tensor_get is its own synchronising copy, so reading row by row pays
+        // one round-trip per token of the ubatch (3 at the MTP verify batch). The rows of this
+        // view are evenly strided, and ggml_nbytes spans rows-1 strides plus the last row, so
+        // one read of that span returns every row. BELLS_READBACK_ROWS=1 restores the per-row read.
+        static const bool rb_rows = [] {
+            const char * s = getenv("BELLS_READBACK_ROWS");
+            return s && s[0] && s[0] != '0';
+        }();
+
         const auto t_rb0 = std::chrono::steady_clock::now();
-        for (int64_t i = 0; i < rows; ++i) {
-            ggml_backend_tensor_get(t, ids.data() + i*k, i*t->nb[1], k*sizeof(int32_t));
+        const bool one_read = !rb_rows && rows > 1 && t->nb[0] == sizeof(int32_t) &&
+                              t->ne[2] == 1 && t->ne[3] == 1 && t->nb[1] % sizeof(int32_t) == 0;
+        if (one_read) {
+            const size_t stride = t->nb[1]/sizeof(int32_t);
+            bells_rb_span.resize(ggml_nbytes(t)/sizeof(int32_t));
+            ggml_backend_tensor_get(t, bells_rb_span.data(), 0, ggml_nbytes(t));
+            for (int64_t i = 0; i < rows; ++i) {
+                memcpy(ids.data() + i*k, bells_rb_span.data() + i*stride, k*sizeof(int32_t));
+            }
+        } else {
+            for (int64_t i = 0; i < rows; ++i) {
+                ggml_backend_tensor_get(t, ids.data() + i*k, i*t->nb[1], k*sizeof(int32_t));
+            }
         }
         const auto t_rb1 = std::chrono::steady_clock::now();
 

@@ -1,0 +1,60 @@
+    99.37%     0.00%  [.] 0xffffffffffffffff                                                                                                
+    88.87%     0.02%  [.] llama_context::process_ubatch(llama_ubatch const&, llm_graph_type, llama_memory_context_i*, ggml_status&)         
+    86.81%     0.00%  [.] llama_context::graph_compute(ggml_cgraph*, bool)                                                                  
+    86.80%     0.06%  [.] ggml_backend_sched_graph_compute_async                                                                            
+    79.04%     0.02%  [.] cudaStreamSynchronize                                                                                             
+    78.86%     0.01%  [.] cuStreamSynchronize                                                                                               
+    77.70%     0.03%  [.] ggml_backend_cuda_synchronize(ggml_backend*)                                                                      
+    10.81%     0.92%  [.] clock_gettime                                                                                                     
+    10.44%     0.01%  [.] server_context_impl::update_slots()                                                                               
+    10.35%     0.00%  [.] llama_server(common_params&, int, char**)                                                                         
+    10.35%     0.00%  [.] server_queue::start_loop(long)                                                                                    
+     7.42%     2.03%  [.] common_sampler_sample(common_sampler*, llama_context*, int, bool)                                                 
+     6.27%     0.39%  [.] ggml_backend_cuda_graph_compute(ggml_backend*, ggml_cgraph*)                                                      
+     5.32%     0.00%  [.] server_context_impl::iterate(std::vector<server_slot, std::allocator<server_slot> >&, std::function<void (server_s
+     5.28%     0.00%  [.] server_context_impl::post_decode(int, int, llama_batch&)::{lambda(server_slot&)#3}::operator()(server_slot&) const
+     5.01%     0.00%  [.] server_queue::yield_to_queue(std::function<void ()>&&)                                                            
+     4.99%     0.11%  [.] llama_context::bells_eval(ggml_tensor*, bool)                                                                     
+     4.29%     0.01%  [.] llama_context::synchronize()                                                                                      
+     4.29%     0.00%  [.] ggml_backend_sched_synchronize                                                                                    
+     4.01%     0.00%  [.] server_context_impl::pre_decode()                                                                                 
+     3.85%     0.00%  [.] common_speculative_draft(common_speculative*)                                                                     
+     3.85%     0.00%  [.] common_speculative_impl_draft_mtp::draft(std::vector<common_speculative_draft_params, std::allocator<common_specul
+     3.83%     0.00%  [.] common_sampler_sample_and_accept_n(common_sampler*, llama_context*, std::vector<int, std::allocator<int> > const&,
+     2.62%     1.65%  [.] ggml_cuda_graph_update_required(ggml_backend_cuda_context*, ggml_cgraph*)                                         
+     2.59%     0.01%  [.] cudaMemcpyAsync                                                                                                   
+     2.09%     0.01%  [.] ggml_backend_cuda_buffer_set_tensor(ggml_backend_buffer*, ggml_tensor*, void const*, unsigned long, unsigned long)
+     2.09%     0.02%  [.] bells_runtime::on_routing(unsigned int, int const*, unsigned long)                                                
+     1.69%     0.01%  [.] llama_sampler_chain_apply(llama_sampler*, llama_token_data_array*)                                                
+     1.65%     1.58%  [.] llama_token_data_array_partial_sort_inplace(llama_token_data_array*, int)                                         
+     1.65%     0.00%  [.] llama_sampler_top_k_apply(llama_sampler*, llama_token_data_array*)                                                
+     1.33%     0.01%  [.] cudaGraphLaunch                                                                                                   
+     1.30%     0.01%  [.] cuMemcpyHtoDAsync_v2                                                                                              
+     1.27%     0.00%  [.] cuGraphLaunch                                                                                                     
+     1.21%     0.01%  [.] ggml_backend_cuda_buffer_get_tensor(ggml_backend_buffer*, ggml_tensor const*, void*, unsigned long, unsigned long)
+     1.16%     0.00%  [.] cuMemcpyDtoHAsync_v2                                                                                              
+     1.15%     0.01%  [.] server_context_impl::decode(int&, int, llama_batch&)                                                              
+     1.06%     0.00%  [.] ggml_backend_sched_alloc_graph                                                                                    
+     0.93%     0.27%  [.] bells_tensors::upload_slots(unsigned int, std::vector<int, std::allocator<int> > const&)                          
+     0.86%     0.01%  [.] common_sampler_clone(common_sampler*)                                                                             
+     0.85%     0.00%  [.] 0xffffffffa9400f4b                                                                                                
+     0.83%     0.00%  [.] 0xffffffffa80ad771                                                                                                
+     0.81%     0.00%  [.] 0xffffffffa925832b                                                                                                
+     0.73%     0.00%  [.] 0xffffffffa820ed1a                                                                                                
+     0.73%     0.00%  [.] 0xffffffffa820fc96                                                                                                
+     0.69%     0.01%  [.] bells_tensors::copy_expert(unsigned int, int, int)                                                                
+     0.66%     0.02%  [.] ggml_backend_cuda_set_tensor_async(ggml_backend*, ggml_tensor*, void const*, unsigned long, unsigned long)        
+     0.64%     0.00%  [.] 0xffffffffa82267a8                                                                                                
+     0.64%     0.00%  [.] 0xffffffffa8226cc8                                                                                                
+     0.61%     0.60%  [.] llama_kv_cache::seq_rm(int, int, int) [clone .part.0]                                                             
+     0.61%     0.00%  [.] llama_kv_cache::seq_rm(int, int, int)                                                                             
+     0.60%     0.00%  [.] 0xffffffffa820ddd9                                                                                                
+     0.51%     0.01%  [.] llama_decode                                                                                                      
+     0.50%     0.26%  [.] ggml_gallocr_reserve_n_impl                                                                                       
+     0.50%     0.02%  [.] llama_context::decode(llama_batch const&)                                                                         
+     0.50%     0.00%  [.] common_memory::seq_rm(int, int, int) const                                                                        
+     0.47%     0.01%  [.] cudaLaunchKernelExC                                                                                               
+     0.45%     0.00%  [.] cuLaunchKernelEx                                                                                                  
+     0.44%     0.00%  [.] llama_model::build_graph(llm_graph_params const&) const                                                           
+     0.44%     0.11%  [.] bells_cache::ensure(unsigned int, int const*, unsigned long, std::vector<bells_copy, std::allocator<bells_copy> >&
+     0.41%     0.00%  [.] llama_model_qwen4exp::build_arch_graph(llm_graph_params const&) const                                             

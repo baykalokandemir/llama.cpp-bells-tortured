@@ -10,7 +10,7 @@ R=/home/god/dev/llama.cpp-qsa/local/results/fr/rank.ids
 O=/home/god/dev/llama.cpp-qsa/local/results/bellsprof-$TAG; mkdir -p $O
 C="-ngl 99 -sm layer -ts 28,20 -c 65536 -lm mmap -lzm off -t 32 -tb 32 -fa on -ctk q8_0 -ctv q8_0 --fit off --parallel 1 --jinja --cpu-moe-pinned -ub 2048 -b 2048 --bells-slots ${SLOTS:-240} -md $H --spec-type draft-mtp -devd CUDA1 -ngld 99 --spec-draft-n-max 2"
 env LLAMA_DRAFT_UBATCH=256 LLAMA_MTP_VOCAB=$R LLAMA_MTP_VOCAB_N=65536 "$@" LD_LIBRARY_PATH=$B \
-  nsys profile -t cuda,osrt -s none --cpuctxsw=none --cuda-graph-trace=node -o $O/prof -f true \
+  nsys profile -t cuda,osrt -s none --cpuctxsw=none --cuda-graph-trace=${GTRACE:-node} -o $O/prof -f true \
   $B/llama-server -m $M --host 127.0.0.1 --port 8094 $C > $O/server.log 2>&1 &
 NP=$!
 for i in $(seq 1 300); do [ "$(curl -s -m 2 -o /dev/null -w %{http_code} http://127.0.0.1:8094/health)" = 200 ] && break; sleep 2; done
@@ -35,4 +35,4 @@ json.dump(out, open(sys.argv[1], "w"), indent=1)
 PY
 pkill -INT -x llama-server; wait $NP   # one interrupt only: a second one makes the server hang in exit
 nsys export -t sqlite -f true -o $O/prof.sqlite $O/prof.nsys-rep >/dev/null 2>&1
-python3 /home/god/dev/llama.cpp-qsa/local/bench/bellsprof.py $O
+python3 /home/god/dev/llama.cpp-qsa/local/bench/bellsprof.py $O; python3 /home/god/dev/llama.cpp-qsa/local/bench/bellsgap.py $O

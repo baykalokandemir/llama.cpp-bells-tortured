@@ -9089,6 +9089,16 @@ static std::vector<std::unique_ptr<test_case>> make_test_cases_eval() {
         }
     }
 
+    // short rows gathered many times (qwen4exp indexer: block scores expanded to every cell)
+    for (ggml_type t : {GGML_TYPE_F32, GGML_TYPE_F16, GGML_TYPE_I32}) {
+        for (int n : {1, 3, 32}) {
+            for (bool v : {false, true}) {
+                test_cases.emplace_back(new test_get_rows(t, n, 4096, 16384, 1, 1, v));
+                test_cases.emplace_back(new test_get_rows(t, n, 1024, 3000, 2, 3, v));
+            }
+        }
+    }
+
     for (ggml_type type : {GGML_TYPE_F32, GGML_TYPE_Q4_0}) {
         test_cases.emplace_back(new test_get_rows(type, 300*256,   5,         4,   1,   2, false));
         test_cases.emplace_back(new test_get_rows(type,     256,   80000, 70000,   2,   1, false));

@@ -93,8 +93,10 @@ Numbers from different sessions are not directly comparable (page-cache regime, 
 | Indexer top-k over blocks -> replaced by short-row get_rows kernel | getrows-small (merged), GGML_CUDA_GET_ROWS_SMALL=0 disables | ms/pass 61k 48.3 -> 45.3 (-6%), 32k -2.7%, <=16k none | unchanged | none | adopted [14] |
 | PR #28699 pooled-key cache | LLAMA_QSA_NO_POOLED_CACHE=1 disables (ac3af2fc1) | 61k 43.8 -> 49.8 (+13.8%), 32k +4.1%, 8-16k +2-3% (64k ctx, 2 pairs) | unchanged (345-380) | ~50 MiB per GPU | adopted |
 | GPU peer-to-peer access | GGML_CUDA_P2P=1 (patched 610 driver) | none: shallow 64.6 both, 8k/32k within noise (2 pairs) | none (358-368) | none | neutral (off) |
-| **GPU-side expert cache (#12, in progress)** | | | | | |
-| GenerelSchwerz moe-cache fork instead of BELLS | --moe-expert-cache-size 200, grouped decode + CUDA graphs | shallow 47-48 (200 slots), 51.6 (240 slots) vs ~62-64 BELLS; 8k 46.2; hit rate ~84% vs ~98% | 8k 419 vs ~368 | 240 slots OOM at 8k prompt | open (fork lacks our patches; same-session BELLS arm and overlap flags pending) |
+| **GPU-side expert cache (#12)** | | | | | |
+| GenerelSchwerz moe-cache fork instead of BELLS (same session, 200 slots, FR off in all arms) | --moe-expert-cache-size 200, grouped decode + CUDA graphs (fork 1af951956) | shallow 48.1-48.6 vs BELLS 56.8-57.2 (-15%); 8k 45.8 vs 57.5; 32k 40.2 vs 55.5 (-28%); hit ~84% (unique expert accesses) vs BELLS 94.5% (per layer-call) | 8k 420 vs 368 (+14%), 32k 407 vs 347 (+17%) | ~600-750 MiB more per GPU at equal slots; 240 slots OOM on the 8k prompt | rejected [15] |
+| Fork + --moe-early-router --decode-overlap --decode-boundary-overlap | same, 200 slots | 47.1-48.0 / 44.5 / 39.2 (slightly worse) | 321 / 330 (-23%) | same | rejected |
+| Fork with LRU eviction | GGML_CUDA_MOE_FREQUENCY=0 | 47.7-48.2 / 45.6 / 40.4 (same as frequency) | 419 / 419 | same | rejected |
 
 Footnotes:
 
@@ -134,6 +136,11 @@ Footnotes:
     to every cell (3-float rows, one thread block per row: 2.5 ms/pass at 61k). A one-element-per-thread
     kernel for rows <= 32 is bit-identical. Block-level top-k was dropped (blk_cells cannot express the
     incomplete tail block). GET_ROWS tests 252/252.
+15. Results in local/results/moecache (local/bench/mc-ab.sh). The fork lacks the pooled-key cache,
+    sparse FA row conversion and short-row get_rows, which explains part of the depth gap. BELLS
+    at 200 slots reports per layer-call readback 26 us + copy 19 us + upload 15 us (~2.9 ms per
+    48-layer pass): moving that bookkeeping onto the GPU inside BELLS, not switching forks, is the
+    remaining #12 target. The fork's faster prefill path may be worth a separate look.
 
 ### Costs and downsides of what we kept
 
@@ -179,7 +186,7 @@ Only adopted (or about-to-be-adopted) changes are listed; rejected attempts cost
 - Noise or confounds: claim 100's +10.7% graph-key gain (retracted, PLE warmth/order); the bimodal
   decode (guest compaction, not threads or flags); page-cache regime shifts of ~7%; server A/Bs of
   numerics changes (text and acceptance move).
-- Open: GPU-side expert-cache control (#12, moe-cache fork A/B above); remaining per-pass growth
+- Open: GPU-side expert-cache control (#12: fork rejected, port GPU-side bookkeeping into BELLS); remaining per-pass growth
   with depth; HCQ8 quality (KLD) unmeasured; needle/concurrency suite reruns; slow short-prompt
   prefill anomaly; a third GPU (RTX 3060, sm_86) is planned.
 

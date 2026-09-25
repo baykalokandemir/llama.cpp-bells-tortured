@@ -10,10 +10,12 @@ for arm in ${ARMS:-mc mcx bells}; do
            A="$COMMON -lm mmap --cpu-moe-pinned --bells-slots $SLOTS" ;;
     mc)    B=/home/god/dev/llama.cpp-moecache/build/bin; E=""
            A="$COMMON ${LM:--lm none} --cpu-moe --moe-expert-cache-size $SLOTS --moe-expert-cache-host-pinned-mb 0 -ubd 256 $XARGS" ;;
+    mclru) B=/home/god/dev/llama.cpp-moecache/build/bin; E="GGML_CUDA_MOE_FREQUENCY=0"
+           A="$COMMON ${LM:--lm none} --cpu-moe --moe-expert-cache-size $SLOTS --moe-expert-cache-host-pinned-mb 0 -ubd 256 $XARGS" ;;
     mcx)   B=/home/god/dev/llama.cpp-moecache/build/bin; E=""
            A="$COMMON ${LM:--lm none} --cpu-moe --moe-expert-cache-size $SLOTS --moe-expert-cache-host-pinned-mb 0 -ubd 256 --moe-early-router --decode-overlap --decode-boundary-overlap $XARGS" ;;
   esac
   BIN=$B EXTRA_ENV="$E" ./depthcurve2.sh mc-$arm-$SLOTS ${DEPTHS:-8192,32768} 1 $A 2>&1 | cut -c1-200
-  grep -E "moe-cache|grouped|hit rate|hit_rate" dc-mc-$arm-$SLOTS-server.log | grep -v "^\s*$" | tail -4 | cut -c1-220 | sed "s/^/$arm LOG /"
+  { grep "moe-grouped-paths" dc-mc-$arm-$SLOTS-server.log | grep -v "decode_grouped=0 " | tail -1; grep "bells_timing" dc-mc-$arm-$SLOTS-server.log | tail -1; } | cut -c1-400 | sed "s/^/$arm LOG /"
 done
 echo ALLDONE

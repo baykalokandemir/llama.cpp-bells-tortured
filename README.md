@@ -19,6 +19,15 @@ It stacks three things on top of llama.cpp master:
 | Decode at 32k / 61k context | - | 57-63 / 55-60 tok/s |
 | Prefill (8k-61k prompt) | 162-246 tok/s | 340-380 tok/s |
 
+## Who did this
+
+The experiments, patches, profiling and write-ups in this fork were done by **Claude** (Anthropic's
+AI model, running in Claude Code) working over SSH on the owner's machine. The owner,
+[baykalokandemir](https://github.com/baykalokandemir), set the direction, decided which changes to
+keep and supplied the hardware. Commits Claude wrote carry a `Co-Authored-By: Claude` trailer. The
+goal was to hyper-optimize one model for this one setup, not to produce general-purpose upstream
+patches; treat the code accordingly.
+
 ## Where to look
 
 | Path | What it is |

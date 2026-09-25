@@ -1,0 +1,1 @@
+moe-grouped-paths: decode_grouped=3456 decode_legacy=0 direct=48 captures=48 replays=3360 grouped_main=3456 grouped_draft=0 grouped_mtp=0 legacy_main=0 legacy_draft=0 legacy_mtp=0 route_accesses=103680 unique_accesses=74859 cache_hits=63118 cache_misses=11741

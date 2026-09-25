@@ -1,0 +1,1 @@
+bells_timing: per layer-call: readback 25.9 us, copy 19.3 us, upload 15.7 us, hit 94.3% (26000 calls)

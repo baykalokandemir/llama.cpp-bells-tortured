@@ -327,6 +327,9 @@ private:
         // !samplers.empty() to check if any samplers are active
         std::map<llama_seq_id, llama_sampler *> samplers;
 
+        // chain structure (sampler names) last reserved for, per seq_id; see set_sampler
+        std::map<llama_seq_id, std::string> reserved_sig;
+
         buffer_view<float>       logits     = {nullptr, 0};
         buffer_view<llama_token> sampled    = {nullptr, 0};
         buffer_view<float>       probs      = {nullptr, 0};

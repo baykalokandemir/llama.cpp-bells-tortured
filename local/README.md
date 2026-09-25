@@ -121,6 +121,31 @@ Footnotes:
 14. Planned after the depth profile: top-k over the n_kv/4 block scores (ik #2374 / vLLM) instead of
     expanding to tokens; not bit-identical to the current token-level selection at the last block.
 
+### Costs and downsides of what we kept
+
+Only adopted (or about-to-be-adopted) changes are listed; rejected attempts cost nothing.
+
+| Change | Cost / downside |
+|---|---|
+| BELLS expert cache | Out-of-tree fork: every upstream rebase is work. Prompts over ~n_slot/10 tokens bypass the cache (prefill runs experts on CPU without op offload). Auto-sizing is unusable; slots must be set by hand. |
+| MTP head on GPU1 | ~35 fewer slots. Verify batches multiply cache misses (37 -> 113 us copy per layer-call). Speed varies with how predictable the text is. |
+| --cpu-moe-pinned | ~41 GB locked RAM, load 9 -> 54 s, some swap during load; the copy evicts other page cache (it pushed out PLE until -lzm off). |
+| -lzm off | PLE table (~27 GB) stays in page cache: RAM, not disk, sets the floor. A larger (e.g. BF16) PLE would not fit this way. |
+| Op offload + -ub 2048 | ~43 fewer slots than the decode-only config; shallow decode a few percent lower (~59 vs 61.6 at 32k). Bigger compute buffer (keep >= 300 MiB free). |
+| Chunked QSA indexer | Extra small kernels per chunk; PPL 2.0374 vs 2.0351 (inside error). Local patch to carry. |
+| LLAMA_DRAFT_UBATCH | Draft-context prefill with a smaller ubatch; its own cost not measured. Env var to remember. |
+| HCQ8 requant | Quality never measured (no KLD/PPL vs the shipped file). A second model file to maintain. |
+| AVX2 Q2_0 kernel | None known (CPU-only path). |
+| Shape-keyed CUDA graph cache | Keeps more graphs alive (a little memory); no speed effect at fixed draft depth. |
+| mmvf fallback (16-512 rows) | Changes numerics, so outputs differ from earlier builds (precision not worse: activations stay F32). Global dispatch change, measured only on sm_120. |
+| FR-Spec draft vocab (top 64k) | ~110 MiB on GPU1 (1-2 slots). English/code-weighted ranking: other languages likely draft worse. Needs a ranking file matching the tokenizer plus two env vars. |
+| Pooled-key cache (PR #28699) | Unmerged upstream PR with non-trivial rollback bookkeeping. Single-stream only (--parallel > 1 falls back to full recompute). ~50 MiB per GPU. Output identity not provable by hash (depth output is nondeterministic anyway). |
+| Sparse FA Q8_0 row conversion | No VRAM saving (full F16 buffer still allocated). Q8_0 only. Correctness relies on the sparse kernel reading only listed rows: the rest of the F16 buffer is stale, so an upstream change that reads more rows would give wrong output (tests cover our shapes). |
+| Short-row get_rows | None functional (bit-identical). Applies to every model's short-row gathers; measured only on our case and sm_120. |
+| Guest compaction off | System-wide VM setting: memory fragments more over time; on-demand compaction stalls still occur (compact_stall 435 -> 503 over 2026-09-25). |
+| VM 48 vCPU | Host cores reserved for the VM; effect not isolated. |
+| Overall | ~10 local patches plus 3 unmerged upstream PRs on top of the BELLS fork, and ~8 env vars in the serving config: rebases get harder and a dropped env var silently loses a gain. |
+
 ### Recap
 
 - Current build: `main` at 51a7b1b1d = BELLS + PR #28243 MTP + AVX2 Q2_0 + chunked QSA indexer +

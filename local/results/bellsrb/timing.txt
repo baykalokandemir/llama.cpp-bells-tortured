@@ -1,0 +1,6 @@
+on1 bells_timing: per layer-call: readback 27.7 us, copy 36.9 us, upload 15.8 us, hit 96.3% (26000 calls) | skipped 16267 unchanged
+off1 bells_timing: per layer-call: readback 42.0 us, copy 19.8 us, upload 20.2 us, hit 96.4% (26000 calls) | 
+off2 bells_timing: per layer-call: readback 25.6 us, copy 10.3 us, upload 14.1 us, hit 96.4% (26000 calls) | 
+on2 bells_timing: per layer-call: readback 10.5 us, copy 10.5 us, upload 9.7 us, hit 96.4% (26000 calls) | skipped 16416 unchanged
+on3 bells_timing: per layer-call: readback 10.5 us, copy 12.5 us, upload 9.9 us, hit 96.4% (26000 calls) | skipped 16408 unchanged
+off3 bells_timing: per layer-call: readback 25.7 us, copy 10.4 us, upload 14.1 us, hit 96.4% (26000 calls) | 

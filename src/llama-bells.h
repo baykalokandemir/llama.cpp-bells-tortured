@@ -275,6 +275,10 @@ private:
     // across uploads to keep this off the per-layer, per-token allocation path.
     std::vector<int32_t> slot_scratch_;
 
+    // Last table uploaded per entry (entries_ index); upload_slots skips an identical one.
+    std::vector<std::vector<int32_t>> uploaded_;
+    uint64_t n_upload_skipped_ = 0;
+
     // Pinned staging ring for expert copies. cudaMemcpyAsync from pageable memory blocks; from
     // pinned memory it returns immediately and overlaps. Measured 164.9 us vs 5.3 us per
     // layer-call, so for any model too large to load with --cpu-moe-pinned this is the single

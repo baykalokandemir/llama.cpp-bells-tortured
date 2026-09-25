@@ -836,10 +836,17 @@ void bells_tensors::free() {
     }
     ctxs_.clear();
 
+    if (n_upload_skipped_ > 0) {
+        fprintf(stderr, "bells_tensors: skipped %llu unchanged slot-table uploads\n",
+                (unsigned long long) n_upload_skipped_);
+    }
+
     entries_.clear();
     index_.clear();
     layer_ids_.clear();
     rq_cache_.clear();
+    uploaded_.clear();
+    n_upload_skipped_ = 0;
 
     vram_bytes_       = 0;
     bytes_per_expert_ = 0;
@@ -1308,9 +1315,30 @@ void bells_tensors::upload_slots(uint32_t il, const std::vector<int32_t> & table
         }
     }
 
+    // Skip the upload when the table is what the device already holds. The slots tensor lives in
+    // this object's own buffer and this is its only writer, so the last upload is still in place.
+    // At a high hit rate most layer-calls copy nothing and the table does not change, and each
+    // upload is a synchronous H2D that stalls the resume of the graph. BELLS_UPLOAD_ALWAYS=1
+    // restores the unconditional upload.
+    static const bool upload_always = [] {
+        const char * s = getenv("BELLS_UPLOAD_ALWAYS");
+        return s && s[0] && s[0] != '0';
+    }();
+
+    if (uploaded_.size() < entries_.size()) {
+        uploaded_.resize(entries_.size());
+    }
+    std::vector<int32_t> & last = uploaded_[(size_t) index_[il]];
+
+    if (!upload_always && last == slot_scratch_) {
+        n_upload_skipped_++;
+        return;
+    }
+
     // NOTE: cannot go async here. slot_scratch_ is reused on the next call, so the write has to
     // complete before returning.
     ggml_backend_tensor_set(t, slot_scratch_.data(), 0, n*sizeof(int32_t));
+    last = slot_scratch_;
 
     // BELLS_TRACE_EVAL=1 also reports slot-table uploads. A cache that allocates and
     // substitutes correctly still produces garbage if this never runs: the table stays

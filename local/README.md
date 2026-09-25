@@ -101,6 +101,7 @@ Numbers from different sessions are not directly comparable (page-cache regime, 
 | Stable uid for eval-callback graph views (CUDA graph update check skipped) | sched-view-uid d1d596db2, GGML_SCHED_VIEW_UID=0 disables | shallow 66.1 -> 68.2, 8k +1.8-2.8%, 32k +2.3% (2 pairs, 1 off arm in slow regime); output identical; uid_reuse 526 -> ~26.3k of ~28.3k replays | unchanged | none | adopted (merged 78b0274ef) [17] |
 | Backend (GPU) sampling for the target model | --backend-sampling / LLAMA_ARG_BACKEND_SAMPLING=1 (upstream flag) | shallow 66.2 -> 69.3-69.7 (+5%), 8k +4.6-5.5%, 32k +5.5-5.9% (2 pairs); output and acceptance identical | alone: short prompts 64 -> 13-36 tok/s, 8k -2% (per-request scheduler re-reserve, fixed by the next row) | none measured | adopted (in the test config) [17] |
 | No scheduler re-reserve on backend-sampler removal / identical re-install | sampler-reserve b239bafb8, LLAMA_SAMPLER_ALWAYS_RESERVE=1 disables | with -bs: 69.7 shallow either way; removes decode dips after re-reserve | with -bs: 31-token prompt 20-23 -> 65 tok/s (= no -bs), 8k 292 -> 367 | none | adopted (merged ce7706d60) [17] |
+| Disable the CUDA MoE weighted-reduction fusion (issue #29168: breaks MTP exactness on gemma4) | moe-wr-gate 9a69f6ef8, GGML_CUDA_MOE_WR_FUSION=0 | one prose prompt: +1.6%, acceptance 0.706 -> 0.752; 10-prompt workload (accwork.py, ABBA): total 62.3/62.9 on vs 62.1/61.1 off, acceptance 0.733-0.737 both; per prompt +-5 points either way | unchanged | none | rejected (keep fusion) [18] |
 
 Footnotes:
 
@@ -163,6 +164,11 @@ Footnotes:
     sampler-reserve commit alone (skip on identical chain) had no effect; the removal path was the
     trigger. Short prompts of 25-31 tokens run experts on CPU by design (BELLS serves ubatch <= 24,
     op offload starts at 32).
+18. The fusion does fire (output changes) but is not what makes MTP output differ from plain decoding:
+    greedy text with MTP differs from text without MTP with the fusion on and off alike (batch-size
+    numerics). Single-prompt acceptance comparisons mislead: use local/bench/accwork.py (8 distinct
+    short prompts + 2 real-text 8k prompts, TOTAL row) as the acceptance workload; it plugs into
+    local/bench/depthcurve2.sh through CLIENT=.
 
 ### Costs and downsides of what we kept
 

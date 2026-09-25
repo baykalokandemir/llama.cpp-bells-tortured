@@ -10046,12 +10046,12 @@ static std::vector<std::unique_ptr<test_case>> make_test_cases_eval() {
         }
     }
 
-    // thin weights (few rows, long rows, small batch) take mmvf at every batch it supports,
-    // e.g. the qwen4exp hyper-connection inject [10240, 4]
+    // small batches on weights whose row count mmf rejects: thin (qwen4exp hyper-connection inject
+    // [10240, 4]) and not a multiple of 32 (ssm_alpha/ssm_beta [2560, 48])
     for (ggml_type type_a : {GGML_TYPE_F32, GGML_TYPE_F16, GGML_TYPE_BF16}) {
-        for (int m : {1, 4, 8}) {
+        for (auto [m, k] : std::vector<std::pair<int, int>>{{4, 10240}, {8, 10240}, {16, 2560}, {48, 2560}, {100, 2560}, {500, 2560}}) {
             for (int n : {1, 2, 3, 5, 8, 9}) {
-                test_cases.emplace_back(new test_mul_mat(type_a, GGML_TYPE_F32, m, n, 10240, {1, 1}, {1, 1}));
+                test_cases.emplace_back(new test_mul_mat(type_a, GGML_TYPE_F32, m, n, k, {1, 1}, {1, 1}));
             }
         }
     }

@@ -1568,6 +1568,11 @@ bool llama_context::set_sampler(llama_seq_id seq_id, llama_sampler * sampler) {
         return true;
     }
 
+    static const bool always_reserve = [] {
+        const char * s = getenv("LLAMA_SAMPLER_ALWAYS_RESERVE");
+        return s && s[0] && s[0] != '0';
+    }();
+
     LLAMA_LOG_DEBUG("%s: seq_id = %d, sampler = %p\n", __func__, (int) seq_id, (void *) sampler);
 
     if (sampler && model.split_mode() == LLAMA_SPLIT_MODE_TENSOR) {
@@ -1603,11 +1608,6 @@ bool llama_context::set_sampler(llama_seq_id seq_id, llama_sampler * sampler) {
         // shape. Re-reserving each time cost ~0.3-1 s per request. The previous sampler may already
         // be freed here, so compare a stored signature rather than the old chain.
         // LLAMA_SAMPLER_ALWAYS_RESERVE=1 restores the unconditional reserve.
-        static const bool always_reserve = [] {
-            const char * s = getenv("LLAMA_SAMPLER_ALWAYS_RESERVE");
-            return s && s[0] && s[0] != '0';
-        }();
-
         std::string sig;
         for (int32_t i = 0; i < llama_sampler_chain_n(sampler); ++i) {
             sig += llama_sampler_name(llama_sampler_chain_get(sampler, i));
@@ -1636,10 +1636,17 @@ bool llama_context::set_sampler(llama_seq_id seq_id, llama_sampler * sampler) {
         return false;
     }
 
+    // Removal: the server calls this with nullptr when a slot resets after every request. Dropping a
+    // sampler only shrinks what the graph needs, so the reserved buffers stay valid and the graph is
+    // rebuilt anyway (samplers_equal). Keep the signature so the next request's identical chain does
+    // not re-reserve either; together these were two full re-reserves (with a pinned host buffer
+    // alloc/free) per request.
     sampling.samplers.erase(seq_id);
-    sampling.reserved_sig.erase(seq_id);
 
-    sched_need_reserve = true;
+    if (always_reserve) {
+        sampling.reserved_sig.erase(seq_id);
+        sched_need_reserve = true;
+    }
 
     return true;
 }

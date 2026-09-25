@@ -972,6 +972,32 @@ static __global__ void flash_attn_combine_results(
     dst[tid] = VKQ_numerator / VKQ_denominator;
 }
 
+// Sparse flash attention with a quantized KV cache: the MMA kernel reads F16 K/V, and converting the whole
+// cache every call costs O(n_kv) per layer even though the sparse kernel then reads only n_kv_max rows per
+// index list. Convert just the listed rows into the (packed) F16 buffer instead. Rows are shared by all
+// heads of a cell; duplicate indices across lists rewrite identical values. Lists are padded with -1.
+static __global__ void flash_attn_convert_sparse_rows_q8_0(
+        const char * __restrict__ src, half * __restrict__ dst, const int32_t * __restrict__ idx,
+        const int n_kv_max, const int ntiles_x, const int64_t ne0, const int64_t ne1, const int64_t ne2,
+        const size_t nb1, const size_t nb2, const size_t nb3) {
+    const int list = blockIdx.y;
+    const int seq  = list / ntiles_x;
+    const int h    = blockIdx.z;
+    const int32_t * rows = idx + int64_t(list)*n_kv_max;
+    for (int j = blockIdx.x; j < n_kv_max; j += gridDim.x) {
+        const int row = rows[j];
+        if (row < 0) {
+            break;
+        }
+        const block_q8_0 * x = (const block_q8_0 *) (src + int64_t(row)*nb1 + int64_t(h)*nb2 + int64_t(seq)*nb3);
+        half * y = dst + ((int64_t(seq)*ne2 + h)*ne1 + row)*ne0;
+        for (int i = threadIdx.x; i < ne0; i += blockDim.x) {
+            const block_q8_0 & b = x[i/QK8_0];
+            y[i] = __float2half(__half2float(b.d) * (float) b.qs[i%QK8_0]);
+        }
+    }
+}
+
 template <int DV, int ncols1, int ncols2>
 void launch_fattn(
     ggml_backend_cuda_context & ctx, ggml_tensor * dst, fattn_kernel_t fattn_kernel, const int nwarps, const size_t nbytes_shared,
@@ -1023,13 +1049,51 @@ void launch_fattn(
     size_t nb22 = V->nb[2];
     size_t nb23 = V->nb[3];
 
+    const int ntiles_x     = ((Q->ne[1] + ncols1 - 1) / ncols1);
+    const int gqa_ratio    = Q->ne[2] / K->ne[2];
+    const int ntiles_z_gqa = ((gqa_ratio + ncols2 - 1) / ncols2);
+    const int ntiles_dst   = ntiles_x * ntiles_z_gqa * K->ne[2] * Q->ne[3];
+
+    // sparse: a query tile of ncols1 queries shares one index list, the union of the queries' visible columns
+    int32_t n_kv_max = 0;
+    if (use_sparse) {
+        GGML_ASSERT(mask != nullptr);
+        const int32_t n_kv_max_query = ggml_get_op_params_i32(KQV, 4);
+        GGML_ASSERT(n_kv_max_query > 0);
+        n_kv_max = std::min<int64_t>(K->ne[1], int64_t(ncols1)*n_kv_max_query);
+
+        const size_t n_lists = size_t(ntiles_x) * mask->ne[3];
+
+        KV_max.alloc(size_t(n_kv_max)*n_lists + n_lists);
+        ggml_cuda_flash_attn_ext_compact_mask(mask, KV_max.ptr, KV_max.ptr + size_t(n_kv_max)*n_lists, Q->ne[1], ncols1, n_kv_max, main_stream);
+    }
+
+    // [sparse Q8_0 rows] GGML_CUDA_FA_SPARSE_ALL_ROWS=1 restores converting the whole cache
+    static const bool sparse_rows_enabled = getenv("GGML_CUDA_FA_SPARSE_ALL_ROWS") == nullptr;
+    const bool sparse_rows = use_sparse && sparse_rows_enabled && need_f16_K && need_f16_V && !V_is_K_view &&
+        K->type == GGML_TYPE_Q8_0 && V->type == GGML_TYPE_Q8_0 && K->ne[0] % QK8_0 == 0 && V->ne[0] % QK8_0 == 0 &&
+        K->ne[3] == mask->ne[3] && V->ne[3] == mask->ne[3];
+    auto convert_sparse_rows = [&](const ggml_tensor * T, const char * src, half * dst) {
+        const size_t n_lists = size_t(ntiles_x) * mask->ne[3];
+        const dim3 grid(std::min(n_kv_max, 2048), n_lists, T->ne[2]);
+        flash_attn_convert_sparse_rows_q8_0<<<grid, 128, 0, main_stream>>>(src, dst, KV_max.ptr, n_kv_max, ntiles_x,
+            T->ne[0], T->ne[1], T->ne[2], T->nb[1], T->nb[2], T->nb[3]);
+        CUDA_CHECK(cudaGetLastError());
+    };
+
     if (need_f16_K && K->type != GGML_TYPE_F16) {
         const size_t bs = ggml_blck_size(K->type);
         const size_t ts = ggml_type_size(K->type);
 
         GGML_ASSERT(f16_extra.K != 0);
         half * K_f16 = (half *) f16_extra.K;
-        if (ggml_is_contiguously_allocated(K)) {
+        if (sparse_rows) {
+            convert_sparse_rows(K, K_data, K_f16);
+
+            nb11 = K->ne[0] * sizeof(half);
+            nb12 = K->ne[1] * nb11;
+            nb13 = K->ne[2] * nb12;
+        } else if (ggml_is_contiguously_allocated(K)) {
             to_fp16_cuda_t to_fp16 = ggml_get_to_fp16_cuda(K->type);
             to_fp16(K_data, K_f16, ggml_nelements(K), main_stream);
 
@@ -1063,7 +1127,14 @@ void launch_fattn(
 
             GGML_ASSERT(f16_extra.V != 0);
             half * V_f16 = (half *) f16_extra.V;
-            if (ggml_is_contiguously_allocated(V)) {
+            if (sparse_rows) {
+                convert_sparse_rows(V, V_data, V_f16);
+                V_data = (char *) V_f16;
+
+                nb21 = V->ne[0] * sizeof(half);
+                nb22 = V->ne[1] * nb21;
+                nb23 = V->ne[2] * nb22;
+            } else if (ggml_is_contiguously_allocated(V)) {
                 to_fp16_cuda_t to_fp16 = ggml_get_to_fp16_cuda(V->type);
                 to_fp16(V_data, V_f16, ggml_nelements(V), main_stream);
                 V_data = (char *) V_f16;
@@ -1087,24 +1158,6 @@ void launch_fattn(
         }
     }
 
-    const int ntiles_x     = ((Q->ne[1] + ncols1 - 1) / ncols1);
-    const int gqa_ratio    = Q->ne[2] / K->ne[2];
-    const int ntiles_z_gqa = ((gqa_ratio + ncols2 - 1) / ncols2);
-    const int ntiles_dst   = ntiles_x * ntiles_z_gqa * K->ne[2] * Q->ne[3];
-
-    // sparse: a query tile of ncols1 queries shares one index list, the union of the queries' visible columns
-    int32_t n_kv_max = 0;
-    if (use_sparse) {
-        GGML_ASSERT(mask != nullptr);
-        const int32_t n_kv_max_query = ggml_get_op_params_i32(KQV, 4);
-        GGML_ASSERT(n_kv_max_query > 0);
-        n_kv_max = std::min<int64_t>(K->ne[1], int64_t(ncols1)*n_kv_max_query);
-
-        const size_t n_lists = size_t(ntiles_x) * mask->ne[3];
-
-        KV_max.alloc(size_t(n_kv_max)*n_lists + n_lists);
-        ggml_cuda_flash_attn_ext_compact_mask(mask, KV_max.ptr, KV_max.ptr + size_t(n_kv_max)*n_lists, Q->ne[1], ncols1, n_kv_max, main_stream);
-    }
 
     // Optional optimization where the mask is scanned to determine whether part of the calculation can be skipped.
     // Only worth the overhead if there is at lease one FATTN_KQ_STRIDE x FATTN_KQ_STRIDE square to be skipped or

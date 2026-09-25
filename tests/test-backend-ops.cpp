@@ -9089,6 +9089,16 @@ static std::vector<std::unique_ptr<test_case>> make_test_cases_eval() {
         }
     }
 
+    // short rows gathered many times (qwen4exp indexer: block scores expanded to every cell)
+    for (ggml_type t : {GGML_TYPE_F32, GGML_TYPE_F16, GGML_TYPE_I32}) {
+        for (int n : {1, 3, 32}) {
+            for (bool v : {false, true}) {
+                test_cases.emplace_back(new test_get_rows(t, n, 4096, 16384, 1, 1, v));
+                test_cases.emplace_back(new test_get_rows(t, n, 1024, 3000, 2, 3, v));
+            }
+        }
+    }
+
     for (ggml_type type : {GGML_TYPE_F32, GGML_TYPE_Q4_0}) {
         test_cases.emplace_back(new test_get_rows(type, 300*256,   5,         4,   1,   2, false));
         test_cases.emplace_back(new test_get_rows(type,     256,   80000, 70000,   2,   1, false));
@@ -10861,6 +10871,14 @@ static std::vector<std::unique_ptr<test_case>> make_test_cases_eval() {
     // sparse mask + quantized cache
     test_cases.emplace_back(new test_flash_attn_ext(128, 128, 1, { 8, 1}, 4096,  1, true, false, 0, 0, GGML_PREC_F32, GGML_TYPE_Q8_0, GGML_TYPE_Q8_0, {0, 1, 2, 3}, true, false, 512));
     test_cases.emplace_back(new test_flash_attn_ext(128, 128, 1, { 8, 1}, 4096, 64, true, false, 0, 0, GGML_PREC_F32, GGML_TYPE_Q8_0, GGML_TYPE_Q8_0, {0, 1, 2, 3}, true, false, 512));
+
+    // Qwen QSA with a Q8_0 cache at the MTP verify batch (3-4 queries): the MMA sparse path converts only the
+    // listed K/V rows to F16. kv >= 2*nb*2048 so the sparse gather engages.
+    for (int nb : {3, 4}) {
+        for (int kv : {16384, 32768}) {
+            test_cases.emplace_back(new test_flash_attn_ext(256, 256, 2, {12, 1}, kv, nb, true, false, 0, 0, GGML_PREC_F32, GGML_TYPE_Q8_0, GGML_TYPE_Q8_0, {0, 1, 2, 3}, true, false, 2048));
+        }
+    }
 
     // Qwen QSA: 256/256, gqa 12, budget 2048.
     test_cases.emplace_back(new test_flash_attn_ext(256, 256, 2, {12, 1}, 8192, 1, true, false, 0, 0, GGML_PREC_F32, GGML_TYPE_F16, GGML_TYPE_F16, {0, 1, 2, 3}, true, false, 2048));

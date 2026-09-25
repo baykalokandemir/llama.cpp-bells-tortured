@@ -10566,6 +10566,11 @@ static std::vector<std::unique_ptr<test_case>> make_test_cases_eval() {
             test_cases.emplace_back(new test_top_k(GGML_TYPE_F32, {202048, nrows, 1, 1}, k, true));
         }
     }
+    // qwen4exp QSA indexer at prefill: k = 2048 of n_kv cells, one row per query of a 256-token chunk
+    for (int64_t ncols : {4096, 16384, 61470}) {
+        test_cases.emplace_back(new test_top_k(GGML_TYPE_F32, {ncols, 256, 1, 1}, 2048));
+        test_cases.emplace_back(new test_top_k(GGML_TYPE_F32, {ncols, 17, 1, 1}, 2048));
+    }
 
     for (int k : {1, 2, 3, 7, 15}) {
         test_cases.emplace_back(new test_top_k(GGML_TYPE_F32, {16, 10, 10, 10}, k));

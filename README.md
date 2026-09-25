@@ -1,4 +1,4 @@
-# llama.cpp-qsa: Qwen3.8-Flash-Next at 60+ tok/s on two 16 GB GPUs
+# llama.cpp-qsa: Qwen3.8-Flash-Next at ~70 tok/s on two 16 GB GPUs
 
 This is a llama.cpp fork tuned for one model on one machine: **Qwen3.8-Flash-Next** (arch
 `qwen4exp`, ~177B MoE with 512 experts / top-10, DeltaNet + sparse-attention (QSA) layers,
@@ -15,9 +15,9 @@ It stacks three things on top of llama.cpp master:
 
 | | Start (2026-09-21, static expert placement) | Now (`main`, 64k context) |
 |---|---:|---:|
-| Decode, short prompt | 34.8 tok/s | **62-65 tok/s** |
-| Decode at 32k / 61k context | - | 57-63 / 55-60 tok/s |
-| Prefill (8k-61k prompt) | 162-246 tok/s | 340-380 tok/s |
+| Decode, short prompt | 34.8 tok/s | **72 tok/s** |
+| Decode at 32k / 61k context | - | 68.5 / 61 tok/s |
+| Prefill (8k-61k prompt) | 162-246 tok/s | 345-370 tok/s |
 
 ## Who did this
 
@@ -52,6 +52,9 @@ patches; treat the code accordingly.
 | Sparse flash attention with Q8_0 KV: convert only the selected rows to F16 | fa-sparse-q8 merge, `GGML_CUDA_FA_SPARSE_ALL_ROWS=1` disables | +12.5% at 61k |
 | One-element-per-thread `get_rows` for rows of <= 32 elements | getrows-small merge, `GGML_CUDA_GET_ROWS_SMALL=0` disables | -6% ms/pass at 61k |
 
+| BELLS: one routing readback per layer, skip unchanged slot-table uploads | bells-rb merge, `BELLS_READBACK_ROWS=1` / `BELLS_UPLOAD_ALWAYS=1` disable | +1.5-3% |
+| Stable uid for the graph views the BELLS callback creates (skips CUDA graph re-checks) | sched-view-uid merge, `GGML_SCHED_VIEW_UID=0` disables | +2-3% |
+| GPU token sampling (upstream flag) plus no scheduler re-reserve per request | `--backend-sampling`; sampler-reserve merge, `LLAMA_SAMPLER_ALWAYS_RESERVE=1` disables | +5%; without the fix short prompts lose ~0.5 s |
 Rejected attempts (tensor parallel, n-gram drafting, draft p_min, `-ub 4096`, F16 KV, split
 GPU/CPU experts, and others) are in the table in local/README.md with the reason for each.
 
@@ -74,7 +77,7 @@ build/bin/llama-server -m Qwen3.8-Flash-Next-GSQ-RCO-IQ3_XXS-HCQ8-00001-of-00002
   -devd CUDA1 -ngld 99 \
   -ngl 99 -sm layer -ts 28,20 --cpu-moe-pinned --bells-slots 240 \
   -c 65536 -fa on -ctk q8_0 -ctv q8_0 -ub 2048 -b 2048 \
-  -lm mmap -lzm off -t 32 -tb 32 --fit off --parallel 1 --jinja
+  -lm mmap -lzm off -t 32 -tb 32 --fit off --parallel 1 --jinja --backend-sampling
 ```
 
 - `--bells-slots 240`: experts per layer kept in VRAM (~98% hit rate here). Set it by hand; auto-sizing

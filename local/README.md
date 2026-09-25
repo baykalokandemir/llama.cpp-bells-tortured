@@ -98,9 +98,9 @@ Numbers from different sessions are not directly comparable (page-cache regime, 
 | Fork + --moe-early-router --decode-overlap --decode-boundary-overlap | same, 200 slots | 47.1-48.0 / 44.5 / 39.2 (slightly worse) | 321 / 330 (-23%) | same | rejected |
 | Fork with LRU eviction | GGML_CUDA_MOE_FREQUENCY=0 | 47.7-48.2 / 45.6 / 40.4 (same as frequency) | 419 / 419 | same | rejected |
 | BELLS: one routing readback per layer + skip unchanged slot-table uploads | bells-rb (BELLS_READBACK_ROWS=1 / BELLS_UPLOAD_ALWAYS=1 disable) | 2 clean pairs: shallow 64.5 -> 66.0-66.6 (+2.2-3.0%), 8k +1.5-1.8%, 32k +1.9-2.9%; readback 25.6 -> 10.5 us, upload 14.1 -> 9.8 us per layer-call, ~62% of uploads skipped; output identical | unchanged | none | adopted (merged e27789c0b) [16] |
-| Stable uid for eval-callback graph views (CUDA graph update check skipped) | sched-view-uid d1d596db2, GGML_SCHED_VIEW_UID=0 disables | shallow 66.1 -> 68.2, 8k +1.8-2.8%, 32k +2.3% (2 pairs, 1 off arm in slow regime); output identical; uid_reuse 526 -> ~26.3k of ~28.3k replays | unchanged | none | pending merge [17] |
-| Backend (GPU) sampling for the target model | --backend-sampling / LLAMA_ARG_BACKEND_SAMPLING=1 (upstream flag) | shallow 66.2 -> 69.3-69.7 (+5%), 8k +4.6-5.5%, 32k +5.5-5.9% (2 pairs); output and acceptance identical | alone: short prompts 64 -> 13-36 tok/s, 8k -2% (per-request scheduler re-reserve, fixed by the next row) | none measured | adopt with sampler-reserve [17] |
-| No scheduler re-reserve on backend-sampler removal / identical re-install | sampler-reserve b239bafb8, LLAMA_SAMPLER_ALWAYS_RESERVE=1 disables | with -bs: 69.7 shallow either way; removes decode dips after re-reserve | with -bs: 31-token prompt 20-23 -> 65 tok/s (= no -bs), 8k 292 -> 367 | none | pending merge [17] |
+| Stable uid for eval-callback graph views (CUDA graph update check skipped) | sched-view-uid d1d596db2, GGML_SCHED_VIEW_UID=0 disables | shallow 66.1 -> 68.2, 8k +1.8-2.8%, 32k +2.3% (2 pairs, 1 off arm in slow regime); output identical; uid_reuse 526 -> ~26.3k of ~28.3k replays | unchanged | none | adopted (merged 78b0274ef) [17] |
+| Backend (GPU) sampling for the target model | --backend-sampling / LLAMA_ARG_BACKEND_SAMPLING=1 (upstream flag) | shallow 66.2 -> 69.3-69.7 (+5%), 8k +4.6-5.5%, 32k +5.5-5.9% (2 pairs); output and acceptance identical | alone: short prompts 64 -> 13-36 tok/s, 8k -2% (per-request scheduler re-reserve, fixed by the next row) | none measured | adopted (in the test config) [17] |
+| No scheduler re-reserve on backend-sampler removal / identical re-install | sampler-reserve b239bafb8, LLAMA_SAMPLER_ALWAYS_RESERVE=1 disables | with -bs: 69.7 shallow either way; removes decode dips after re-reserve | with -bs: 31-token prompt 20-23 -> 65 tok/s (= no -bs), 8k 292 -> 367 | none | adopted (merged ce7706d60) [17] |
 
 Footnotes:
 
@@ -185,6 +185,10 @@ Only adopted (or about-to-be-adopted) changes are listed; rejected attempts cost
 | Pooled-key cache (PR #28699) | Unmerged upstream PR with non-trivial rollback bookkeeping. Single-stream only (--parallel > 1 falls back to full recompute). ~50 MiB per GPU. Output identity not provable by hash (depth output is nondeterministic anyway). |
 | Sparse FA Q8_0 row conversion | No VRAM saving (full F16 buffer still allocated). Q8_0 only. Correctness relies on the sparse kernel reading only listed rows: the rest of the F16 buffer is stale, so an upstream change that reads more rows would give wrong output (tests cover our shapes). |
 | Short-row get_rows | None functional (bit-identical). Applies to every model's short-row gathers; measured only on our case and sm_120. |
+| BELLS one readback + upload skip | Keeps a per-layer copy of the slot table on the host (2 KB x 48); correctness relies on upload_slots being the only writer of the slot tensor. |
+| Stable uid for graph views | Global change in the ggml scheduler: any backend that caches per graph uid (CUDA, RPC, meta) now reuses a view's graph. Correct only while views of an unchanged split keep the same node range (the uid includes the range). |
+| --backend-sampling | Experimental upstream flag. Silently falls back to CPU sampling for grammar/JSON schema, reasoning budget, n_probs without post-sampling probs, and reportedly presence_penalty (#29017), so those requests lose the +5%. |
+| sampler-reserve | Skips the scheduler re-reserve and relies on graph allocation growing buffers on demand; upstream #29370 reports a stale allocator plan on that path when output flags change (matters with --parallel > 1). |
 | Guest compaction off | System-wide VM setting: memory fragments more over time; on-demand compaction stalls still occur (compact_stall 435 -> 503 over 2026-09-25). |
 | VM 48 vCPU | Host cores reserved for the VM; effect not isolated. |
 | Overall | ~10 local patches plus 3 unmerged upstream PRs on top of the BELLS fork, and ~8 env vars in the serving config: rebases get harder and a dropped env var silently loses a gain. |
@@ -193,12 +197,13 @@ Only adopted (or about-to-be-adopted) changes are listed; rejected attempts cost
 
 - Current build: `main` = BELLS + PR #28243 MTP + AVX2 Q2_0 + chunked QSA indexer + LLAMA_DRAFT_UBATCH +
   shape-keyed CUDA graphs + mmvf fallback + FR-Spec draft vocab + PR #28699 pooled-key cache +
-  sparse FA Q8_0 row conversion + short-row get_rows.
+  sparse FA Q8_0 row conversion + short-row get_rows + BELLS one-readback/upload-skip + stable
+  graph-view uid + sampler-reserve.
 - Current test config (not yet in llama-swap): HCQ8, 64k Q8_0 KV, 240 slots, -ub 2048 with op offload, --cpu-moe-pinned,
-  MTP head on CUDA1 depth 2, -lzm off, FR-Spec top 64k, guest compaction off.
-- Its numbers (2026-09-25, current main): shallow decode ~62-65 tok/s; real-text depth 63-64 at 8k,
-  58-64 at 16k, 57-63 at 32k, 55-60 at 61k (was 44-45 at 61k before the three depth fixes);
-  prefill 340-380 tok/s.
+  MTP head on CUDA1 depth 2, -lzm off, FR-Spec top 64k, --backend-sampling, guest compaction off.
+- Its numbers (2026-09-26, main ce7706d60 + -bs, one run): shallow decode 72.3 tok/s; depth 70.8 at
+  8k, 69.5 at 16k, 68.5 at 32k, 61.0 at 61k; prefill 346-369 tok/s. (2026-09-25 morning: ~64.5
+  shallow, 44-45 at 61k.)
 - 128k works at 230 slots: 8k prefill 369-372, 110k prompt 263 tok/s, decode 56-61 at 8k, 25.8 at 110k.
 - Decode-only 32k variant (298 slots, -ub 128, no op offload): 61.62 tok/s, prefill ~80-90.
 - Changes that mattered most: BELLS over static placement (+9.5%), MTP with the head on GPU1

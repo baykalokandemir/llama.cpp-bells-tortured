@@ -4,6 +4,9 @@
 #include "llama-memory-recurrent.h"
 
 #include <algorithm>
+#include <cmath>
+#include <mutex>
+#include <map>
 #include <cinttypes>
 
 // bad metadata must be catchable: GGML_ASSERT aborts the whole process
@@ -519,6 +522,83 @@ llama_model_qwen4exp::graph::graph(const llama_model & model, const llm_graph_pa
     ggml_build_forward_expand(gf, cur);
 }
 
+// LLAMA_MTP_VOCAB=<file of token ids>: the draft head scores only those tokens (frequency-ranked
+// drafting, FR-Spec). The full LM head is read once per draft token (~1 ms for 248k x 2560 Q5_K);
+// a copy of just the listed rows is built once, next to the original weight, and the draft logits
+// are scattered back into a -inf vocab-sized row so sampling is unchanged. The target still
+// verifies against the full vocabulary: a token outside the list can be emitted, just not drafted.
+struct qwen4exp_mtp_sub_head {
+    ggml_context          * ctx = nullptr;
+    ggml_backend_buffer_t   buf = nullptr;
+    ggml_tensor           * w   = nullptr; // [n_embd, n_sub], same type as the head
+    ggml_tensor           * ids = nullptr; // [n_sub] I32
+};
+
+static const qwen4exp_mtp_sub_head * qwen4exp_mtp_sub_head_get(const ggml_tensor * head_w) {
+    static const std::vector<int32_t> ids = [&] {
+        std::vector<int32_t> v;
+        const char * path = getenv("LLAMA_MTP_VOCAB");
+        if (!path || !*path) {
+            return v;
+        }
+        FILE * f = fopen(path, "r");
+        if (!f) {
+            LLAMA_LOG_WARN("%s: cannot open LLAMA_MTP_VOCAB=%s, drafting over the full vocabulary\n", __func__, path);
+            return v;
+        }
+        long long id;
+        while (fscanf(f, "%lld", &id) == 1) {
+            v.push_back((int32_t) id);
+        }
+        fclose(f);
+        const char * n = getenv("LLAMA_MTP_VOCAB_N");
+        if (n && atoll(n) > 0 && (size_t) atoll(n) < v.size()) {
+            v.resize((size_t) atoll(n));
+        }
+        return v;
+    }();
+    if (ids.empty() || head_w->buffer == nullptr) {
+        return nullptr;
+    }
+
+    static std::mutex mtx;
+    static std::map<const ggml_tensor *, qwen4exp_mtp_sub_head> cache;
+    std::lock_guard<std::mutex> lock(mtx);
+    auto it = cache.find(head_w);
+    if (it != cache.end()) {
+        return &it->second;
+    }
+
+    const int64_t n_vocab = head_w->ne[1];
+    const int64_t n_sub   = (int64_t) ids.size();
+    for (int32_t id : ids) {
+        GGML_ASSERT(id >= 0 && id < n_vocab && "LLAMA_MTP_VOCAB: token id out of range");
+    }
+
+    qwen4exp_mtp_sub_head sh;
+    ggml_init_params ip = { 2*ggml_tensor_overhead(), nullptr, true };
+    sh.ctx = ggml_init(ip);
+    sh.w   = ggml_new_tensor_2d(sh.ctx, head_w->type, head_w->ne[0], n_sub);
+    sh.ids = ggml_new_tensor_1d(sh.ctx, GGML_TYPE_I32, n_sub);
+    ggml_set_name(sh.w,   "mtp_sub_head");
+    ggml_set_name(sh.ids, "mtp_sub_ids");
+    sh.buf = ggml_backend_alloc_ctx_tensors_from_buft(sh.ctx, ggml_backend_buffer_get_type(head_w->buffer));
+    GGML_ASSERT(sh.buf && "LLAMA_MTP_VOCAB: failed to allocate the reduced head");
+    ggml_backend_buffer_set_usage(sh.buf, GGML_BACKEND_BUFFER_USAGE_WEIGHTS);
+
+    const size_t row = ggml_row_size(head_w->type, head_w->ne[0]);
+    std::vector<uint8_t> rows(row * n_sub);
+    for (int64_t i = 0; i < n_sub; ++i) {
+        ggml_backend_tensor_get(head_w, rows.data() + i*row, (size_t) ids[i]*row, row);
+    }
+    ggml_backend_tensor_set(sh.w,   rows.data(), 0, rows.size());
+    ggml_backend_tensor_set(sh.ids, ids.data(),  0, ids.size()*sizeof(int32_t));
+
+    LLAMA_LOG_INFO("%s: MTP draft head reduced to %" PRId64 " of %" PRId64 " tokens (%.1f MiB on %s)\n", __func__,
+            n_sub, n_vocab, rows.size()/1048576.0, ggml_backend_buffer_name(sh.buf));
+    return &(cache[head_w] = sh);
+}
+
 // TODO: QSA for the draft head; dense is a numerical superset below the 2048-token budget.
 llama_model_qwen4exp::graph_mtp::graph_mtp(const llama_model & model, const llm_graph_params & params) :
     graph(model, params, no_build_t{}) {
@@ -693,7 +773,21 @@ llama_model_qwen4exp::graph_mtp::graph_mtp(const llama_model & model, const llm_
         GGML_ASSERT(head_w && "QWEN4EXP MTP: the target model has no LM head to borrow");
     }
 
-    cur = build_lora_mm(head_w, cur, head_s);
+    const qwen4exp_mtp_sub_head * sub = qwen4exp_mtp_sub_head_get(head_w);
+    if (sub) {
+        ggml_tensor * logits_sub = build_lora_mm(sub->w, cur, head_s);
+        cb(logits_sub, "mtp_logits_sub", -1);
+
+        const int64_t n_vocab = head_w->ne[1];
+        const int64_t n_out   = logits_sub->ne[1];
+        // one-float rows: set_rows scatters the listed token ids into a -inf vocab row per output
+        ggml_tensor * full = ggml_new_tensor_3d(ctx0, GGML_TYPE_F32, 1, n_vocab, n_out);
+        full = ggml_fill_inplace(ctx0, full, -INFINITY);
+        full = ggml_set_rows(ctx0, full, ggml_reshape_3d(ctx0, logits_sub, 1, logits_sub->ne[0], n_out), sub->ids);
+        cur  = ggml_reshape_2d(ctx0, full, n_vocab, n_out);
+    } else {
+        cur = build_lora_mm(head_w, cur, head_s);
+    }
     cb(cur, "result_output", -1);
     res->t_logits = cur;
 

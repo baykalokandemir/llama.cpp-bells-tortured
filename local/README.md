@@ -103,6 +103,7 @@ Numbers from different sessions are not directly comparable (page-cache regime, 
 | No scheduler re-reserve on backend-sampler removal / identical re-install | sampler-reserve b239bafb8, LLAMA_SAMPLER_ALWAYS_RESERVE=1 disables | with -bs: 69.7 shallow either way; removes decode dips after re-reserve | with -bs: 31-token prompt 20-23 -> 65 tok/s (= no -bs), 8k 292 -> 367 | none | adopted (merged ce7706d60) [17] |
 | Disable the CUDA MoE weighted-reduction fusion (issue #29168: breaks MTP exactness on gemma4) | moe-wr-gate 9a69f6ef8, GGML_CUDA_MOE_WR_FUSION=0 | one prose prompt: +1.6%, acceptance 0.706 -> 0.752; 10-prompt workload (accwork.py, ABBA): total 62.3/62.9 on vs 62.1/61.1 off, acceptance 0.733-0.737 both; per prompt +-5 points either way | unchanged | none | rejected (keep fusion) [18] |
 | Radix top-k kernel on CUDA for large multi-row top-k (QSA indexer at prefill; upstream issue #29326 / PR #28713) | radix-topk 77f751be2, GGML_CUDA_TOPK_RADIX=0 disables | unchanged (shallow 72.2-72.5 both; output identical) | 2 pairs: 8k 368.6 -> 400.6 (+8.7%), 32k 361.7 -> 389.5 (+7.7%), 61k 346 -> 367 (+6.1%) | none | pending merge; TOP_K tests incl. new k=2048 cases 531/531 on and off |
+| RMS_NORM + SCALE fusion (upstream PR #29393, merged there as 1ab7e5ad2) | rmsnorm-scale 8b38e7ff4, GGML_CUDA_RMS_NORM_SCALE_FUSION=0 disables | none: shallow 72.2-72.5 both, output bit-identical | 8k 368.6/368.0 on vs 345.9/359.1 off (maybe +3%), 32k inconclusive (331.6/362.4 vs 358.1/350.0) | none | neutral (harmless upstream code; merge optional) |
 
 Footnotes:
 

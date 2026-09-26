@@ -102,9 +102,9 @@ Numbers from different sessions are not directly comparable (page-cache regime, 
 | Backend (GPU) sampling for the target model | --backend-sampling / LLAMA_ARG_BACKEND_SAMPLING=1 (upstream flag) | shallow 66.2 -> 69.3-69.7 (+5%), 8k +4.6-5.5%, 32k +5.5-5.9% (2 pairs); output and acceptance identical | alone: short prompts 64 -> 13-36 tok/s, 8k -2% (per-request scheduler re-reserve, fixed by the next row) | none measured | adopted (in the test config) [17] |
 | No scheduler re-reserve on backend-sampler removal / identical re-install | sampler-reserve b239bafb8, LLAMA_SAMPLER_ALWAYS_RESERVE=1 disables | with -bs: 69.7 shallow either way; removes decode dips after re-reserve | with -bs: 31-token prompt 20-23 -> 65 tok/s (= no -bs), 8k 292 -> 367 | none | adopted (merged ce7706d60) [17] |
 | Disable the CUDA MoE weighted-reduction fusion (issue #29168: breaks MTP exactness on gemma4) | moe-wr-gate 9a69f6ef8, GGML_CUDA_MOE_WR_FUSION=0 | one prose prompt: +1.6%, acceptance 0.706 -> 0.752; 10-prompt workload (accwork.py, ABBA): total 62.3/62.9 on vs 62.1/61.1 off, acceptance 0.733-0.737 both; per prompt +-5 points either way | unchanged | none | rejected (keep fusion) [18] |
-| Radix top-k kernel on CUDA for large multi-row top-k (QSA indexer at prefill; upstream issue #29326 / PR #28713) | radix-topk 77f751be2, GGML_CUDA_TOPK_RADIX=0 disables | unchanged (shallow 72.2-72.5 both; output identical) | 2 pairs: 8k 368.6 -> 400.6 (+8.7%), 32k 361.7 -> 389.5 (+7.7%), 61k 346 -> 367 (+6.1%) | none | pending merge; TOP_K tests incl. new k=2048 cases 531/531 on and off |
-| RMS_NORM + SCALE fusion (upstream PR #29393, merged there as 1ab7e5ad2) | rmsnorm-scale 8b38e7ff4, GGML_CUDA_RMS_NORM_SCALE_FUSION=0 disables | none: shallow 72.2-72.5 both, output bit-identical | 8k 368.6/368.0 on vs 345.9/359.1 off (maybe +3%), 32k inconclusive (331.6/362.4 vs 358.1/350.0) | none | neutral (harmless upstream code; merge optional) |
-| Sparse-FA mask scan fix + wide sparse tile (upstream PR #29298, merged there as dc9879cf6) | sparse-fa-29298 16931e988 (branch build vs main) | within noise: 32k 61.3/64.5 on vs 63.2/65.1 off, 61k 63.3/65.5 vs 63.1/63.3; shallow identical | 32k 361/362 vs 357/356 (+1.4%), 61k 314/347 vs 345/342 | none | neutral at <= 61k (upstream gain was at 106k+); FLASH_ATTN_EXT 3986/3986; merge optional |
+| Radix top-k kernel on CUDA for large multi-row top-k (QSA indexer at prefill; upstream issue #29326 / PR #28713) | radix-topk 77f751be2, GGML_CUDA_TOPK_RADIX=0 disables | unchanged (shallow 72.2-72.5 both; output identical) | 2 pairs: 8k 368.6 -> 400.6 (+8.7%), 32k 361.7 -> 389.5 (+7.7%), 61k 346 -> 367 (+6.1%) | none | adopted (merged 0ec317cc9); TOP_K tests incl. new k=2048 cases 531/531 on and off |
+| RMS_NORM + SCALE fusion (upstream PR #29393, merged there as 1ab7e5ad2) | rmsnorm-scale 8b38e7ff4, GGML_CUDA_RMS_NORM_SCALE_FUSION=0 disables | none: shallow 72.2-72.5 both, output bit-identical | 8k 368.6/368.0 on vs 345.9/359.1 off (maybe +3%), 32k inconclusive (331.6/362.4 vs 358.1/350.0) | none | neutral, merged anyway (c32d771ed: upstream code, eases rebases) |
+| Sparse-FA mask scan fix + wide sparse tile (upstream PR #29298, merged there as dc9879cf6) | sparse-fa-29298 16931e988 (branch build vs main) | within noise: 32k 61.3/64.5 on vs 63.2/65.1 off, 61k 63.3/65.5 vs 63.1/63.3; shallow identical | 32k 361/362 vs 357/356 (+1.4%), 61k 314/347 vs 345/342 | none | neutral at <= 61k (upstream gain was at 106k+); FLASH_ATTN_EXT 3986/3986; merged 232929e4f |
 
 Footnotes:
 
@@ -207,12 +207,13 @@ Only adopted (or about-to-be-adopted) changes are listed; rejected attempts cost
 - Current build: `main` = BELLS + PR #28243 MTP + AVX2 Q2_0 + chunked QSA indexer + LLAMA_DRAFT_UBATCH +
   shape-keyed CUDA graphs + mmvf fallback + FR-Spec draft vocab + PR #28699 pooled-key cache +
   sparse FA Q8_0 row conversion + short-row get_rows + BELLS one-readback/upload-skip + stable
-  graph-view uid + sampler-reserve.
+  graph-view uid + sampler-reserve + radix top-k + upstream #29393 and #29298.
 - Current test config (not yet in llama-swap): HCQ8, 64k Q8_0 KV, 240 slots, -ub 2048 with op offload, --cpu-moe-pinned,
   MTP head on CUDA1 depth 2, -lzm off, FR-Spec top 64k, --backend-sampling, guest compaction off.
-- Its numbers (2026-09-26, main ce7706d60 + -bs, one run): shallow decode 72.3 tok/s; depth 70.8 at
-  8k, 69.5 at 16k, 68.5 at 32k, 61.0 at 61k; prefill 346-369 tok/s. (2026-09-25 morning: ~64.5
-  shallow, 44-45 at 61k.)
+- Its numbers (2026-09-26, main 232929e4f + -bs): shallow decode 72.5 tok/s; depth 69-70 at 8k-32k,
+  64.2 at 61k; prefill 397-401 at 8k-16k, 390 at 32k, 367 at 61k. One of two runs after a load came
+  up in the slow state (shallow ~62); rerun normal. (2026-09-25 morning: ~64.5 shallow, 44-45 at
+  61k, prefill 340-380.)
 - 128k works at 230 slots: 8k prefill 369-372, 110k prompt 263 tok/s, decode 56-61 at 8k, 25.8 at 110k.
 - Decode-only 32k variant (298 slots, -ub 128, no op offload): 61.62 tok/s, prefill ~80-90.
 - Changes that mattered most: BELLS over static placement (+9.5%), MTP with the head on GPU1

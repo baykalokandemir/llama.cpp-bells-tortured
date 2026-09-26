@@ -16,8 +16,8 @@ It stacks three things on top of llama.cpp master:
 | | Start (2026-09-21, static expert placement) | Now (`main`, 64k context) |
 |---|---:|---:|
 | Decode, short prompt | 34.8 tok/s | **72 tok/s** |
-| Decode at 32k / 61k context | - | 68.5 / 61 tok/s |
-| Prefill (8k-61k prompt) | 162-246 tok/s | 345-370 tok/s |
+| Decode at 32k / 61k context | - | 69 / 64 tok/s |
+| Prefill (8k-61k prompt) | 162-246 tok/s | 367-401 tok/s |
 
 ## Who did this
 
@@ -54,6 +54,8 @@ patches; treat the code accordingly.
 | BELLS: one routing readback per layer, skip unchanged slot-table uploads | bells-rb merge, `BELLS_READBACK_ROWS=1` / `BELLS_UPLOAD_ALWAYS=1` disable | +1.5-3% |
 | Stable uid for the graph views the BELLS callback creates (skips CUDA graph re-checks) | sched-view-uid merge, `GGML_SCHED_VIEW_UID=0` disables | +2-3% |
 | GPU token sampling (upstream flag) plus no scheduler re-reserve per request | `--backend-sampling`; sampler-reserve merge, `LLAMA_SAMPLER_ALWAYS_RESERVE=1` disables | +5%; without the fix short prompts lose ~0.5 s |
+| Radix top-k kernel for the QSA indexer at prefill (upstream issue #29326) | radix-topk merge, `GGML_CUDA_TOPK_RADIX=0` disables | prefill +6-9% |
+| Upstream cherry-picks #29393 (RMS_NORM+SCALE fusion) and #29298 (sparse-FA fix) | merges | neutral here |
 
 Rejected attempts (tensor parallel, n-gram drafting, draft p_min, `-ub 4096`, F16 KV, split
 GPU/CPU experts, and others) are in the table in local/README.md with the reason for each.

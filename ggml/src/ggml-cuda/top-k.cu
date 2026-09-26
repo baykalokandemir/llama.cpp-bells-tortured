@@ -48,7 +48,7 @@ static int next_power_of_2(int x) {
 
 #endif                            // CUB_TOP_K_AVAILABLE
 
-#if !defined(GGML_CUDA_USE_CUB) && defined(GGML_USE_HIP)
+#if defined(GGML_USE_HIP) || defined(GGML_CUDA_USE_CUB)
 
 static __device__ __forceinline__ uint32_t top_k_float_to_ordered(float value) {
     const uint32_t bits = __float_as_uint(value);
@@ -208,7 +208,7 @@ static void top_k_radix_cuda(
             src, dst, states, ncols, k, blocks_per_row);
 }
 
-#endif // !defined(GGML_CUDA_USE_CUB) && defined(GGML_USE_HIP)
+#endif // defined(GGML_USE_HIP) || defined(GGML_CUDA_USE_CUB)
 
 void ggml_cuda_op_top_k(ggml_backend_cuda_context & ctx, ggml_tensor * dst) {
     const ggml_tensor * src0   = dst->src[0];
@@ -225,6 +225,19 @@ void ggml_cuda_op_top_k(ggml_backend_cuda_context & ctx, ggml_tensor * dst) {
     const int64_t    nrows = ggml_nrows(src0);
     const int64_t    k     = dst->ne[0];
     ggml_cuda_pool & pool  = ctx.pool();
+#if defined(GGML_CUDA_USE_CUB) && !defined(GGML_USE_HIP)
+    // Serial per-row top-k launches one pass per row and leaves the GPU idle. For large multi-row
+    // inputs (the qwen4exp QSA indexer at prefill) the parallel radix kernel wins despite reading
+    // the data more times (upstream issue #29326, from PR #28713). GGML_CUDA_TOPK_RADIX=0 disables.
+    static const bool use_radix = [] {
+        const char * s = getenv("GGML_CUDA_TOPK_RADIX");
+        return !s || s[0] != '0';
+    }();
+    if (use_radix && ncols > 1024 && nrows >= 16) {
+        top_k_radix_cuda(pool, src0_d, dst_d, ncols, nrows, k, stream);
+        return;
+    }
+#endif
 #ifdef CUB_TOP_K_AVAILABLE
     // TODO: Switch to `DeviceSegmentedTopK` for multi-row TopK once implemented
     // https://github.com/NVIDIA/cccl/issues/6391

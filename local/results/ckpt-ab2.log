@@ -1,0 +1,22 @@
+=== lean1
+lean1 start vram 14860/14692 MiB, rss 70113 MiB
+lean1 {"req": "A", "prompt_n": 8030, "prompt_ms": 22615, "decode_tps": 49.53, "cached": 8149, "sha": "265460d48757"} vram 14932/14742 MiB, rss 71201 MiB
+lean1 {"req": "B", "prompt_n": 128, "prompt_ms": 2162, "decode_tps": 62.01, "cached": 8149, "sha": "3a3f5adff7b1"} vram 14962/14758 MiB, rss 71304 MiB
+lean1 {"req": "A-again", "prompt_n": 128, "prompt_ms": 2096, "decode_tps": 74.48, "cached": 8149, "sha": "acca1330bb69"} vram 14962/14758 MiB, rss 71321 MiB
+lean1 {"req": "B-again", "prompt_n": 128, "prompt_ms": 2080, "decode_tps": 69.37, "cached": 8149, "sha": "3a3f5adff7b1"} vram 14962/14758 MiB, rss 71323 MiB
+lean1 checkpoint-log-lines 0
+=== def3
+def3 start vram 14860/14692 MiB, rss 70112 MiB
+def3 {"req": "A", "prompt_n": 8030, "prompt_ms": 21430, "decode_tps": 45.22, "cached": 8149, "sha": "acca1330bb69"} vram 14934/14742 MiB, rss 71076 MiB
+def3 {"req": "B", "prompt_n": 2048, "prompt_ms": 5574, "decode_tps": 58.53, "cached": 8149, "sha": "72ea2b247cfc"} vram 14964/14760 MiB, rss 71205 MiB
+def3 {"req": "A-again", "prompt_n": 2048, "prompt_ms": 5486, "decode_tps": 70.71, "cached": 8149, "sha": "265460d48757"} vram 14964/14760 MiB, rss 71209 MiB
+def3 {"req": "B-again", "prompt_n": 2048, "prompt_ms": 5354, "decode_tps": 69.98, "cached": 8149, "sha": "72ea2b247cfc"} vram 14964/14760 MiB, rss 71210 MiB
+def3 checkpoint-log-lines 0
+=== lean2
+lean2 start vram 14860/14692 MiB, rss 70113 MiB
+lean2 {"req": "A", "prompt_n": 8030, "prompt_ms": 22953, "decode_tps": 44.53, "cached": 8149, "sha": "acca1330bb69"} vram 14932/14742 MiB, rss 71201 MiB
+lean2 {"req": "B", "prompt_n": 128, "prompt_ms": 2206, "decode_tps": 60.21, "cached": 8149, "sha": "2e50ee3defca"} vram 14962/14758 MiB, rss 71301 MiB
+lean2 {"req": "A-again", "prompt_n": 128, "prompt_ms": 2096, "decode_tps": 75.19, "cached": 8149, "sha": "265460d48757"} vram 14962/14758 MiB, rss 71318 MiB
+lean2 {"req": "B-again", "prompt_n": 128, "prompt_ms": 2081, "decode_tps": 68.58, "cached": 8149, "sha": "3a3f5adff7b1"} vram 14962/14758 MiB, rss 71320 MiB
+lean2 checkpoint-log-lines 0
+ALLDONE

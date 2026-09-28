@@ -1,0 +1,9 @@
+load_s 29
+{"prompt": "warmup", "n_in": 64, "wall_s": 2.12, "pp_tps": 49.15, "n_pp": 64, "tg_tps": 18.3, "n_tg": 16, "draft_n": 7, "draft_acc": 5, "head": " <algorithm>\n\u5cf0\n#include <cmath>\n\u5cf0\n#include"}
+{"prompt": "coding", "n_in": 2048, "wall_s": 18.89, "pp_tps": 191.24, "n_pp": 2048, "tg_tps": 23.37, "n_tg": 192, "draft_n": 95, "draft_acc": 86, "head": "We need answer user's request: review code, point out two most serious bugs or r"}
+{"prompt": "backup", "n_in": 2048, "wall_s": 17.56, "pp_tps": 198.12, "n_pp": 2048, "tg_tps": 26.45, "n_tg": 192, "draft_n": 102, "draft_acc": 93, "head": "We need answer user's request: \"Using the environment described above, write a c"}
+{"prompt": "coding", "n_in": 2048, "wall_s": 18.95, "pp_tps": 192.85, "n_pp": 2048, "tg_tps": 22.93, "n_tg": 192, "draft_n": 82, "draft_acc": 80, "head": "We need answer user's request: review code, point out two most serious bugs or r"}
+{"prompt": "backup", "n_in": 2048, "wall_s": 16.49, "pp_tps": 198.72, "n_pp": 2048, "tg_tps": 30.92, "n_tg": 192, "draft_n": 114, "draft_acc": 108, "head": "We need answer user's request: \"Using the environment described above, write a c"}
+{"prompt": "coding", "n_in": 2048, "wall_s": 19.63, "pp_tps": 192.85, "n_pp": 2048, "tg_tps": 21.21, "n_tg": 192, "draft_n": 74, "draft_acc": 67, "head": "We need answer user's request: review code, point out two most serious bugs or r"}
+{"prompt": "backup", "n_in": 2048, "wall_s": 16.45, "pp_tps": 198.42, "n_pp": 2048, "tg_tps": 31.21, "n_tg": 192, "draft_n": 112, "draft_acc": 108, "head": "We need answer user's request: \"Using the environment described above, write a c"}
+peak_vram_mib 13760 14352 total 28112  min_avail_gib 54.30

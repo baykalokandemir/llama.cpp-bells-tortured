@@ -105,6 +105,9 @@ Numbers from different sessions are not directly comparable (page-cache regime, 
 | Radix top-k kernel on CUDA for large multi-row top-k (QSA indexer at prefill; upstream issue #29326 / PR #28713) | radix-topk 77f751be2, GGML_CUDA_TOPK_RADIX=0 disables | unchanged (shallow 72.2-72.5 both; output identical) | 2 pairs: 8k 368.6 -> 400.6 (+8.7%), 32k 361.7 -> 389.5 (+7.7%), 61k 346 -> 367 (+6.1%) | none | adopted (merged 0ec317cc9); TOP_K tests incl. new k=2048 cases 531/531 on and off |
 | RMS_NORM + SCALE fusion (upstream PR #29393, merged there as 1ab7e5ad2) | rmsnorm-scale 8b38e7ff4, GGML_CUDA_RMS_NORM_SCALE_FUSION=0 disables | none: shallow 72.2-72.5 both, output bit-identical | 8k 368.6/368.0 on vs 345.9/359.1 off (maybe +3%), 32k inconclusive (331.6/362.4 vs 358.1/350.0) | none | neutral, merged anyway (c32d771ed: upstream code, eases rebases) |
 | Sparse-FA mask scan fix + wide sparse tile (upstream PR #29298, merged there as dc9879cf6) | sparse-fa-29298 16931e988 (branch build vs main) | within noise: 32k 61.3/64.5 on vs 63.2/65.1 off, 61k 63.3/65.5 vs 63.1/63.3; shallow identical | 32k 361/362 vs 357/356 (+1.4%), 61k 314/347 vs 345/342 | none | neutral at <= 61k (upstream gain was at 106k+); FLASH_ATTN_EXT 3986/3986; merged 232929e4f |
+| **Upstream BELLS re-check (2026-09-28)** | | | | | |
+| Upstream BELLS as the base instead of our tree: DGuckert master 0275669ec (v1.0.0 + installer) or bells-next e0b309b76, each + PR #28243 head (branches bells-upstream-mtp, bells-next-mtp) | test config at 200 slots (upstream OOMs at 240: no draft-ubatch cap, no chunked indexer) | master 56.9 / 57.3 / 48.7 / 41.4, bells-next 57.4 / 57.6 / 48.9 / 42.5 vs our main 64.4 / 63.3 / 61.1 / 57.1 (shallow / 8k / 32k / 61k, ABBA x3 arms) | 350 / 359 / 351 and 336 / 361 / 354 vs 400 / 390 / 367 | upstream +0.5 / +1.2 GB (CUDA0 / CUDA1) | rejected as a base; upstream master and bells-next tie [19] |
+| Port upstream BELLS (bells-next) into our tree | bells-next-port 818a68cda: upstream llama-bells.*, drop BELLS_HOST_ONLY and our span readback (superseded), keep slot-table upload skip | 240 slots ABBA: 72.5 / 70.1 / 69.4 (ours1 32k 63.1 outlier) / 63.3-64.7 main vs 72.6 / 71.0 / 69.2 / 62.3-64.0 port; shallow output identical | 401 / 388-390 / 367 both | identical to the MiB | tie; pending merge [20] |
 
 Footnotes:
 
@@ -172,6 +175,17 @@ Footnotes:
     numerics). Single-prompt acceptance comparisons mislead: use local/bench/accwork.py (8 distinct
     short prompts + 2 real-text 8k prompts, TOTAL row) as the acceptance workload; it plugs into
     local/bench/depthcurve2.sh through CLIENT=.
+
+19. Results local/results/bellsup-ab.log + local/results/bellsup/ (local/bench/bellsup-ab.sh, SLOTS=200,
+    arms up/next/ours). Identical output and acceptance within each build at shallow. Nearly all of our lead is
+    non-BELLS work (sparse-FA row conversion, pooled-key cache, get_rows, sampler-reserve, FR vocab, graph
+    work); upstream BELLS itself has converged on what bells-rb and BELLS_HOST_ONLY did: its init skips
+    GPU-resident layers, and bells_read_ids reads the strided top-k view with one ggml_backend_tensor_get_2d.
+    New upstream features not yet tried: --bells-cache-type (lossy re-quantized cache, more slots), --auto,
+    binary-search auto-sizer, per-layer slot counts.
+20. Results local/results/bellsport-ab.log (SLOTS=240, arms ours1 port1 port2 ours2). 18,310 slot-table
+    uploads skipped per run, so the upload skip still applies on top of upstream. Depth hashes differ run to
+    run in both builds (claim 102 nondeterminism), so output identity is shown at shallow only.
 
 ### Costs and downsides of what we kept
 
@@ -326,3 +340,34 @@ local/bench/recheck-batch.sh, graphtest workload (64k Q8_0, 240 slots, -ub 2048,
 - -t 8: 41.3-42.4 (56.9); -t 48: 41.4-45.8 (56.0): thread count irrelevant for decode
 - p_min 0.75: 2.09 tokens/pass, 41.1-51.6 ms, overall 47.0 (still a loss)
 - baseline repeat: 41.4-48.6 (three passes at 44.6-48.6): residual noise remains, much reduced.
+
+## Navin AD-4.27 on a friend's RTX 5090 config (2026-09-28)
+
+Model: Navin-Models/Qwen3.8-Flash-Next-Uncensored-AD-4.27-GGUF, 34-shard attached-MTP variant (-main-,
+97.3 GB, SHA256SUMS verified; IQ3_S/IQ2_S gate-up, IQ4_NL down, Q5_1 PLE, Q8_0 rest). Question: the
+friend's 5090 + 64 GB DDR5 command, upstream BELLS (master + PR #28243, branch bells-upstream-mtp) vs our
+main, apples to apples. Command verbatim (their paste had lost underscores) except, in both arms:
+-c 131072 and -ts 11,39. At 262144 both builds OOM on 2x 16 GB: the default layer split puts layers 0-23
+(16.2 GB of weights) on CUDA0, and at -ts 10,40 / 11,39 CUDA1 is ~1 GB short (two contexts and compute
+buffers vs one on the 5090). Per-layer GPU weight sizes: local/bench/navin/layerbytes.py.
+Flags that matter: 34 of 48 expert layers on CPU, 16 BELLS slots, q4_0 KV, MTP n-max 2 p-min 0.75.
+
+Client local/bench/navin/navbench.py: 2 prompts of exactly 2048 templated tokens (code review, backup plan),
+192 tokens, greedy, cache_prompt off, 3 reps each; ABBA up / ours / ours / up (local/bench/navin/abba.sh).
+
+| | upstream BELLS + #28243 | our main |
+|---|---:|---:|
+| decode coding / backup / all 12 | 22.8 / 28.7 / 25.7 | 24.6 / 25.5 / 25.0 |
+| ms per MTP pass (from acceptance) | ~73.5 | ~71.7 |
+| acceptance | 1072/1143 (93.8%) | 1022/1099 (93.0%) |
+| prefill tok/s | 191-199 | 195-203 (2 cold outliers 106/124) |
+| peak VRAM CUDA0 / CUDA1 MiB | 13760 / 14352 | 13696 / 14092 |
+| min MemAvailable | 54.2 GiB | 54.1 GiB |
+
+Tie in tok/s; the backup-prompt gap is acceptance (different greedy text per build), not engine speed.
+Both builds warn that 16 slots is "marginal, likely slower than --cpu-moe" (10 active experts). Upstream
+also caches only the 34 host layers, so BELLS_HOST_ONLY is redundant there; upstream logs one "layer 0
+wants 10 distinct experts" error. Friend's numbers (31.8 / 23.8 decode, 119 / 109 prefill, 3.1 GiB RAM
+free) are in the same decode band. Suggested for their box: p-min 0 (claim 99), smaller -c and the freed
+VRAM into --bells-slots; not --cpu-moe (their 64 GB RAM cannot hold 48 expert layers plus the PLE table).
+Results: local/results/navin/ (failed 262k attempts in failed-262k/).

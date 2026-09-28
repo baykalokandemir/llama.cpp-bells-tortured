@@ -56,6 +56,7 @@ patches; treat the code accordingly.
 | Stable uid for the graph views the BELLS callback creates (skips CUDA graph re-checks) | 0b414a72f, `GGML_SCHED_VIEW_UID=0` disables | +2-3% |
 | GPU token sampling (upstream flag) plus no scheduler re-reserve per request | `--backend-sampling`; 7653ffe69, 72e817c2b, `LLAMA_SAMPLER_ALWAYS_RESERVE=1` disables | +5%; without the fix short prompts lose ~0.5 s |
 | Radix top-k kernel for the QSA indexer at prefill (upstream issue #29326) | 9077b21d5, `GGML_CUDA_TOPK_RADIX=0` disables | prefill +6-9% |
+| Configurable prompt checkpoints (upstream PR #29463, server part) | 7620a1ed5, `LLAMA_CKPT_OFFSETS` (unset = stock) | follow-up turns -60% prompt time; first request +5% |
 | Upstream cherry-picks #29393 (RMS_NORM+SCALE fusion) and #29298 (sparse-FA fix) | c34a39d35, 7d728b975 | neutral here |
 
 Rejected attempts (tensor parallel, n-gram drafting, draft p_min, `-ub 4096`, F16 KV, split
@@ -73,7 +74,7 @@ Only sm_120 (Blackwell consumer) has been measured. The CPU side assumes AVX2.
 ## Run (the 64k test config)
 
 ```sh
-LLAMA_DRAFT_UBATCH=256 \
+LLAMA_DRAFT_UBATCH=256 LLAMA_CKPT_OFFSETS=u,128,4 \
 LLAMA_MTP_VOCAB=local/results/fr/rank.ids LLAMA_MTP_VOCAB_N=65536 \
 build/bin/llama-server -m Qwen3.8-Flash-Next-GSQ-RCO-IQ3_XXS-HCQ8-00001-of-00002.gguf \
   -md mtp-Qwen3.8-Flash-Next-shared-Q4_K_M.gguf --spec-type draft-mtp --spec-draft-n-max 2 \
@@ -89,6 +90,8 @@ build/bin/llama-server -m Qwen3.8-Flash-Next-GSQ-RCO-IQ3_XXS-HCQ8-00001-of-00002
 - `-lzm off` keeps the 27 GB PLE table in page cache, so RAM, not disk, is the limit.
 - HCQ8 is a local requant of the shipped IQ3_XXS file with hyper-connection weights in Q8_0
   instead of BF16 (+9.7% decode, -560 MiB VRAM). Its quality (KLD) has not been measured.
+- `LLAMA_CKPT_OFFSETS=u,128,4` adds a prompt checkpoint 128 tokens before the end, so a follow-up that
+  diverges near the end re-processes ~128 tokens instead of ~2,048 (upstream PR #29463, server part).
 - `rank.ids` is the FR-Spec token ranking for this tokenizer (English prose and code weighted).
 - Inside the VM, `vm.compaction_proactiveness=0` removed a bimodal decode speed (see the notebook).
 

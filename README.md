@@ -96,7 +96,7 @@ build/bin/llama-server -m Qwen3.8-Flash-Next-GSQ-RCO-IQ3_XXS-HCQ8-00001-of-00002
 
 - Numbers are from one machine, batch 1, greedy decoding, and move a few percent between sessions
   (page cache, run order); the notebook says which comparisons were same-session A/Bs.
-- The pooled-key cache is an unmerged upstream PR and works for a single stream only.
+- The pooled-key cache is an unmerged upstream PR and works for a single stream only: with `--parallel > 1` it corrupts across sequences instead of falling back, so set `LLAMA_QSA_NO_POOLED_CACHE=1` there.
 - The notebook cites a private knowledge base ("claim NN") and paths on the author's hosts; those
   are not included.
 

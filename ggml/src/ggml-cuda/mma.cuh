@@ -873,9 +873,9 @@ namespace ggml_cuda_mma {
     }
 
     // Load from tile element (i0, j0), swz tells if the tile is stored swizzled.
-    template <bool swz, typename T, data_layout dl>
+    template <bool swz, int I, int J, typename T, data_layout dl>
     static __device__ __forceinline__ void load_ldmatrix(
-            tile<16, 8, T, dl> & t, const T * __restrict__ tile_base, const int i0, const int j0, const int stride) {
+            tile<I, J, T, dl> & t, const T * __restrict__ tile_base, const int i0, const int j0, const int stride) {
         if constexpr (!swz) {
             load_ldmatrix(t, tile_base + i0*stride + j0, stride);
             return;

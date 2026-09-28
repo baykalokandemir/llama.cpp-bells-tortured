@@ -5,10 +5,12 @@ This is a llama.cpp fork tuned for one model on one machine: **Qwen3.8-Flash-Nex
 hyper-connections, a 27 GB per-layer-embedding table), quantized as ISTA-DASLab GSQ-RCO IQ3_XXS,
 running on **2x RTX 5060 Ti 16 GB + an EPYC 7K62 (Zen 2) with 94 GB RAM**, batch 1.
 
-It stacks three things on top of llama.cpp master:
+It is a fork of [DGuckert/llama.cpp-BELLS](https://github.com/DGuckert/llama.cpp-BELLS), itself a
+fork of llama.cpp, and stacks three things:
 
-1. **BELLS**, a per-layer VRAM expert cache for MoE models (by danielguckert4-droid; its original
-   README is kept in [docs/BELLS.md](docs/BELLS.md)).
+1. **BELLS**, a per-layer VRAM expert cache for MoE models (by danielguckert4-droid), taken unchanged
+   from its `bells-next` branch except for one local patch (below); its README is kept in
+   [docs/BELLS.md](docs/BELLS.md).
 2. **MTP speculative decoding** from upstream PR #28243, with the Unsloth shared MTP head placed
    entirely on the second GPU.
 3. About a dozen local patches and cherry-picks, each measured on its own (listed below).
@@ -41,21 +43,20 @@ patches; treat the code accordingly.
 
 | Change | Commit / switch | Effect (decode unless noted) |
 |---|---|---|
-| AVX2 `Q2_0` vec_dot for Zen 2 (no VNNI) | 251288429 | +14-21% when experts run on CPU |
-| `BELLS_HOST_ONLY`: cache only host-resident layers | cb92ae21e | neutral, kept as an option |
-| Chunked QSA indexer scoring | 7e6b26317, `LLAMA_QSA_CHUNK` | 128k prefill ~3x, compute buffer -1.6 GB |
-| Cap MTP draft-context ubatch | 60a79a76e, `LLAMA_DRAFT_UBATCH` | lets 128k + `-ub 2048` + MTP fit |
-| CUDA graphs keyed by node count and first/last shape | b2d148fb2 | removes re-captures with variable batch shapes |
-| mmvf for 16-512-row weights that mmf rejects | 9f14ee5b7, `GGML_CUDA_MMVF_FALLBACK_MIN_ROWS` | +3.5% (fixed-token bench) |
-| FR-Spec: MTP drafts over the 64k most frequent tokens | 3b47dd11e, `LLAMA_MTP_VOCAB`, `LLAMA_MTP_VOCAB_N` | +3.0-3.5% |
-| Incremental pooled-key cache for the QSA indexer (upstream PR #28699) | ac3af2fc1, `LLAMA_QSA_NO_POOLED_CACHE=1` disables | +13.8% at 61k |
-| Sparse flash attention with Q8_0 KV: convert only the selected rows to F16 | fa-sparse-q8 merge, `GGML_CUDA_FA_SPARSE_ALL_ROWS=1` disables | +12.5% at 61k |
-| One-element-per-thread `get_rows` for rows of <= 32 elements | getrows-small merge, `GGML_CUDA_GET_ROWS_SMALL=0` disables | -6% ms/pass at 61k |
-| BELLS: one routing readback per layer, skip unchanged slot-table uploads | bells-rb merge, `BELLS_READBACK_ROWS=1` / `BELLS_UPLOAD_ALWAYS=1` disable | +1.5-3% |
-| Stable uid for the graph views the BELLS callback creates (skips CUDA graph re-checks) | sched-view-uid merge, `GGML_SCHED_VIEW_UID=0` disables | +2-3% |
-| GPU token sampling (upstream flag) plus no scheduler re-reserve per request | `--backend-sampling`; sampler-reserve merge, `LLAMA_SAMPLER_ALWAYS_RESERVE=1` disables | +5%; without the fix short prompts lose ~0.5 s |
-| Radix top-k kernel for the QSA indexer at prefill (upstream issue #29326) | radix-topk merge, `GGML_CUDA_TOPK_RADIX=0` disables | prefill +6-9% |
-| Upstream cherry-picks #29393 (RMS_NORM+SCALE fusion) and #29298 (sparse-FA fix) | merges | neutral here |
+| AVX2 `Q2_0` vec_dot for Zen 2 (no VNNI) | 4412c6b96 | +14-21% when experts run on CPU |
+| Chunked QSA indexer scoring | 499bd2c23, `LLAMA_QSA_CHUNK` | 128k prefill ~3x, compute buffer -1.6 GB |
+| Cap MTP draft-context ubatch | 5866be973, `LLAMA_DRAFT_UBATCH` | lets 128k + `-ub 2048` + MTP fit |
+| CUDA graphs keyed by node count and first/last shape | 204b78fa1 | removes re-captures with variable batch shapes |
+| mmvf for 16-512-row weights that mmf rejects | bba5e909b, `GGML_CUDA_MMVF_FALLBACK_MIN_ROWS` | +3.5% (fixed-token bench) |
+| FR-Spec: MTP drafts over the 64k most frequent tokens | 542a10f22, `LLAMA_MTP_VOCAB`, `LLAMA_MTP_VOCAB_N` | +3.0-3.5% |
+| Incremental pooled-key cache for the QSA indexer (upstream PR #28699) | 1bb8441ff, `LLAMA_QSA_NO_POOLED_CACHE=1` disables | +13.8% at 61k |
+| Sparse flash attention with Q8_0 KV: convert only the selected rows to F16 | 3681909aa, `GGML_CUDA_FA_SPARSE_ALL_ROWS=1` disables | +12.5% at 61k |
+| One-element-per-thread `get_rows` for rows of <= 32 elements | 58309c90f, `GGML_CUDA_GET_ROWS_SMALL=0` disables | -6% ms/pass at 61k |
+| BELLS: skip unchanged slot-table uploads (the one-readback-per-layer half is upstream now) | 24f32a1fa, `BELLS_UPLOAD_ALWAYS=1` disables | part of +1.5-3% |
+| Stable uid for the graph views the BELLS callback creates (skips CUDA graph re-checks) | 0b414a72f, `GGML_SCHED_VIEW_UID=0` disables | +2-3% |
+| GPU token sampling (upstream flag) plus no scheduler re-reserve per request | `--backend-sampling`; 7653ffe69, 72e817c2b, `LLAMA_SAMPLER_ALWAYS_RESERVE=1` disables | +5%; without the fix short prompts lose ~0.5 s |
+| Radix top-k kernel for the QSA indexer at prefill (upstream issue #29326) | 9077b21d5, `GGML_CUDA_TOPK_RADIX=0` disables | prefill +6-9% |
+| Upstream cherry-picks #29393 (RMS_NORM+SCALE fusion) and #29298 (sparse-FA fix) | c34a39d35, 7d728b975 | neutral here |
 
 Rejected attempts (tensor parallel, n-gram drafting, draft p_min, `-ub 4096`, F16 KV, split
 GPU/CPU experts, and others) are in the table in local/README.md with the reason for each.
@@ -99,7 +100,20 @@ build/bin/llama-server -m Qwen3.8-Flash-Next-GSQ-RCO-IQ3_XXS-HCQ8-00001-of-00002
 - The notebook cites a private knowledge base ("claim NN") and paths on the author's hosts; those
   are not included.
 
+## History layout
+
+`main` is linear on top of two upstream points, so a future rebase is one command:
+
+    bells-next (DGuckert, = llama.cpp + BELLS) -> merge of PR #28243 head 6fcaa16f4 (qwen4exp MTP)
+      -> our commits in the order they were made (code and local/ experiment log interleaved)
+
+Every replayed commit carries `(cherry picked from commit <old>)`, so hashes cited in local/README.md
+and older notes resolve through that trailer; the pre-restack history is kept under the tag
+`archive/pre-restack-2026-09-28`. Upstream llama.cpp PRs we carry ahead of time (#28699, #29298,
+#29393, and the radix top-k kernel for #29326) name the PR in their subject, so they can be dropped
+once the BELLS base contains them.
+
 ## Upstream
 
 - llama.cpp: https://github.com/ggml-org/llama.cpp (MIT, see LICENSE)
-- BELLS original README: [docs/BELLS.md](docs/BELLS.md)
+- BELLS: https://github.com/DGuckert/llama.cpp-BELLS (branch `bells-next`), README in [docs/BELLS.md](docs/BELLS.md)

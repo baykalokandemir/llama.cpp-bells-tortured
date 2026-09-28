@@ -277,6 +277,12 @@ class Keys:
         LLM_KV_SPLIT_COUNT         = "split.count"
         LLM_KV_SPLIT_TENSORS_COUNT = "split.tensors.count"
 
+    class HRM:
+        LAYERS_PER_STACK = "{arch}.hrm.layers_per_stack"
+        H_CYCLES         = "{arch}.hrm.h_cycles"
+        L_CYCLES         = "{arch}.hrm.l_cycles"
+        PREFIX_LM        = "{arch}.hrm.prefix_lm"
+
     class SSM:
         CONV_KERNEL    = "{arch}.ssm.conv_kernel"
         INNER_SIZE     = "{arch}.ssm.inner_size"
@@ -511,6 +517,7 @@ class MODEL_ARCH(IntEnum):
     QWEN3            = auto()
     QWEN3MOE         = auto()
     QWEN3NEXT        = auto()
+    HRM_TEXT         = auto()
     QWEN3VL          = auto()
     QWEN3VLMOE       = auto()
     QWEN35           = auto()
@@ -655,6 +662,7 @@ class MODEL_TENSOR(IntEnum):
     TOKEN_TYPES          = auto()
     POS_EMBD             = auto()
     OUTPUT               = auto()
+    HRM_Z_L_INIT         = auto()
     DENSE_2_OUT          = auto() # embeddinggemma 2_Dense
     DENSE_3_OUT          = auto() # embeddinggemma 3_Dense
     OUTPUT_NORM          = auto()
@@ -1185,6 +1193,9 @@ class MODEL_TENSOR(IntEnum):
     NEXTN_HNORM            = auto()
     NEXTN_SHARED_HEAD_HEAD = auto()
     NEXTN_SHARED_HEAD_NORM = auto()
+    NEXTN_HC_HEAD_NORM     = auto()
+    NEXTN_HC_HEAD_DOWN     = auto()
+    NEXTN_HC_HEAD_UP       = auto()
     # eagle3
     FC                     = auto()  # feature fusion layer
     D2T                    = auto()  # draft to target vocabulary mapping
@@ -1266,6 +1277,7 @@ MODEL_ARCH_NAMES: dict[MODEL_ARCH, str] = {
     MODEL_ARCH.QWEN3:            "qwen3",
     MODEL_ARCH.QWEN3MOE:         "qwen3moe",
     MODEL_ARCH.QWEN3NEXT:        "qwen3next",
+    MODEL_ARCH.HRM_TEXT:         "hrm_text",
     MODEL_ARCH.QWEN3VL:          "qwen3vl",
     MODEL_ARCH.QWEN3VLMOE:       "qwen3vlmoe",
     MODEL_ARCH.QWEN35:           "qwen35",
@@ -1410,6 +1422,7 @@ TENSOR_NAMES: dict[MODEL_TENSOR, str] = {
     MODEL_TENSOR.POS_EMBD:                  "position_embd",
     MODEL_TENSOR.OUTPUT_NORM:               "output_norm",
     MODEL_TENSOR.OUTPUT:                    "output",
+    MODEL_TENSOR.HRM_Z_L_INIT:              "hrm.z_l_init",
     MODEL_TENSOR.DENSE_2_OUT:               "dense_2", # embeddinggemma 2_Dense
     MODEL_TENSOR.DENSE_3_OUT:               "dense_3", # embeddinggemma 2_Dense
     MODEL_TENSOR.HC_HEAD_FN:                "output_hc_fn",
@@ -1969,6 +1982,9 @@ TENSOR_NAMES: dict[MODEL_TENSOR, str] = {
     MODEL_TENSOR.NEXTN_HNORM:               "blk.{bid}.nextn.hnorm",
     MODEL_TENSOR.NEXTN_SHARED_HEAD_HEAD:    "blk.{bid}.nextn.shared_head_head",
     MODEL_TENSOR.NEXTN_SHARED_HEAD_NORM:    "blk.{bid}.nextn.shared_head_norm",
+    MODEL_TENSOR.NEXTN_HC_HEAD_NORM:        "blk.{bid}.nextn.hc_head_norm",
+    MODEL_TENSOR.NEXTN_HC_HEAD_DOWN:        "blk.{bid}.nextn.hc_head_down",
+    MODEL_TENSOR.NEXTN_HC_HEAD_UP:          "blk.{bid}.nextn.hc_head_up",
     MODEL_TENSOR.FC:                        "fc",
     MODEL_TENSOR.DSPARK_MARKOV_W1:          "markov_w1",
     MODEL_TENSOR.DSPARK_MARKOV_W2:          "markov_w2",
@@ -2796,6 +2812,19 @@ MODEL_TENSORS: dict[MODEL_ARCH, list[MODEL_TENSOR]] = {
         MODEL_TENSOR.NEXTN_SHARED_HEAD_HEAD,
         MODEL_TENSOR.NEXTN_SHARED_HEAD_NORM,
     ],
+    MODEL_ARCH.HRM_TEXT: [
+        MODEL_TENSOR.TOKEN_EMBD,
+        MODEL_TENSOR.OUTPUT,
+        MODEL_TENSOR.HRM_Z_L_INIT,
+        MODEL_TENSOR.ATTN_Q,
+        MODEL_TENSOR.ATTN_K,
+        MODEL_TENSOR.ATTN_V,
+        MODEL_TENSOR.ATTN_GATE,
+        MODEL_TENSOR.ATTN_OUT,
+        MODEL_TENSOR.FFN_GATE,
+        MODEL_TENSOR.FFN_DOWN,
+        MODEL_TENSOR.FFN_UP,
+    ],
     MODEL_ARCH.QWEN3VL: [
         MODEL_TENSOR.TOKEN_EMBD,
         MODEL_TENSOR.OUTPUT_NORM,
@@ -2953,6 +2982,14 @@ MODEL_TENSORS: dict[MODEL_ARCH, list[MODEL_TENSOR]] = {
         MODEL_TENSOR.PLE_NORM_QUERY,
         MODEL_TENSOR.PLE_NORM_CONV,
         MODEL_TENSOR.PLE_CONV1D,
+        MODEL_TENSOR.NEXTN_EH_PROJ,
+        MODEL_TENSOR.NEXTN_EMBED_TOKENS,
+        MODEL_TENSOR.NEXTN_ENORM,
+        MODEL_TENSOR.NEXTN_HNORM,
+        MODEL_TENSOR.NEXTN_SHARED_HEAD_HEAD,
+        MODEL_TENSOR.NEXTN_HC_HEAD_NORM,
+        MODEL_TENSOR.NEXTN_HC_HEAD_DOWN,
+        MODEL_TENSOR.NEXTN_HC_HEAD_UP,
     ],
     MODEL_ARCH.PLAMO: [
         MODEL_TENSOR.TOKEN_EMBD,
@@ -3686,6 +3723,7 @@ MODEL_TENSORS: dict[MODEL_ARCH, list[MODEL_TENSOR]] = {
         MODEL_TENSOR.TOKEN_EMBD,
         MODEL_TENSOR.OUTPUT,
         MODEL_TENSOR.OUTPUT_NORM,
+        MODEL_TENSOR.ATTN_QKV,
         MODEL_TENSOR.ATTN_Q,
         MODEL_TENSOR.ATTN_Q_NORM,
         MODEL_TENSOR.ATTN_K,
@@ -5853,7 +5891,7 @@ GGML_QUANT_SIZES: dict[GGMLQuantizationType, tuple[int, int]] = {
     GGMLQuantizationType.Q5_0:    (32, 2 + 4 + 16),
     GGMLQuantizationType.Q5_1:    (32, 2 + 2 + 4 + 16),
     GGMLQuantizationType.Q8_0:    (32, 2 + 32),
-    GGMLQuantizationType.Q8_1:    (32, 4 + 4 + 32),
+    GGMLQuantizationType.Q8_1:    (32, 2 + 2 + 32),
     GGMLQuantizationType.Q2_K:    (256, 2 + 2 + QK_K // 16 + QK_K // 4),
     GGMLQuantizationType.Q3_K:    (256, 2 + QK_K // 4 + QK_K // 8 + 12),
     GGMLQuantizationType.Q4_K:    (256, 2 + 2 + QK_K // 2 + 12),

@@ -1,0 +1,9 @@
+load_s 31
+{"prompt": "warmup", "n_in": 64, "wall_s": 2.34, "pp_tps": 50.27, "n_pp": 64, "tg_tps": 14.02, "n_tg": 16, "draft_n": 11, "draft_acc": 2, "head": " <algorithm>\nuser_code_1"}
+{"prompt": "coding", "n_in": 2048, "wall_s": 17.89, "pp_tps": 194.82, "n_pp": 2048, "tg_tps": 25.9, "n_tg": 192, "draft_n": 91, "draft_acc": 86, "head": "We need answer user's request: review code, point out two most serious bugs or r"}
+{"prompt": "backup", "n_in": 2048, "wall_s": 18.32, "pp_tps": 202.01, "n_pp": 2048, "tg_tps": 23.35, "n_tg": 192, "draft_n": 87, "draft_acc": 81, "head": "We need answer user's request. Need use environment described. Need write concre"}
+{"prompt": "coding", "n_in": 2048, "wall_s": 19.59, "pp_tps": 176.54, "n_pp": 2048, "tg_tps": 23.93, "n_tg": 192, "draft_n": 92, "draft_acc": 83, "head": "We need answer user's request: review code, point out two most serious bugs or r"}
+{"prompt": "backup", "n_in": 2048, "wall_s": 17.91, "pp_tps": 202.78, "n_pp": 2048, "tg_tps": 24.47, "n_tg": 192, "draft_n": 96, "draft_acc": 83, "head": "We need answer user's request. Need use environment described. Need write concre"}
+{"prompt": "coding", "n_in": 2048, "wall_s": 18.19, "pp_tps": 195.97, "n_pp": 2048, "tg_tps": 24.68, "n_tg": 192, "draft_n": 88, "draft_acc": 81, "head": "We need answer user's request: review code, point out two most serious bugs or r"}
+{"prompt": "backup", "n_in": 2048, "wall_s": 17.9, "pp_tps": 202.77, "n_pp": 2048, "tg_tps": 24.49, "n_tg": 192, "draft_n": 86, "draft_acc": 82, "head": "We need answer user's request. Need use environment described. Need write concre"}
+peak_vram_mib 13696 14092 total 27788  min_avail_gib 54.47

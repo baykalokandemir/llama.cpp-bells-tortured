@@ -372,3 +372,25 @@ wants 10 distinct experts" error. Friend's numbers (31.8 / 23.8 decode, 119 / 10
 free) are in the same decode band. Suggested for their box: p-min 0 (claim 99), smaller -c and the freed
 VRAM into --bells-slots; not --cpu-moe (their 64 GB RAM cannot hold 48 expert layers plus the PLE table).
 Results: local/results/navin/ (failed 262k attempts in failed-262k/).
+
+## vLLM "2x3090" stack on 2x 16 GB (2026-09-28)
+
+DominikBucko/qwen38-flash-next-2x3090 v0.3.0 (image ghcr.io/dominikbucko/qwen38-flash-next-2x3090@sha256:8dffc80d9032),
+checkpoint albucino/Qwen3.8-Flash-Next-W4A16-FP8PLE rev ef554143 (Intel AutoRound W4A16 experts, BF16 sensitive
+layers, FP8 PLE, INT4 MTP draft), TP2+EP2, experts in pinned host RAM, MTP3. Host: VM raised to 112 GiB, 64 GB swap
+on a separate NVMe (SN810); the FP8 PLE table (~48 GB) sat in swap (PLE worker VmSwap 48.6 GB, RSS 2.1 GB) with no
+swap traffic during decode. Config local/results/q2x/wintermute-16gb.env: 64k context, BF16 KV 1.45 GiB/GPU,
+40 hot experts per layer per GPU (their validated range is 64-96: 64 plus the MTP draft does not fit 16 GB),
+streaming prefill OFF (its staging buffer borrows 400 MiB from the hot cache; 40 slots give 256 MiB). Three
+capacity guards relaxed 64 -> 32 via bind-mounted copies (local/results/q2x/patch/); over-capacity batches fall
+back to their slower path.
+
+| | shallow | 8k | 32k | 61k | prefill 8k / 32k / 61k | short prompt TTFT |
+|---|---:|---:|---:|---:|---|---:|
+| vLLM 2x3090 stack, hot 40 (pass 1 / pass 2) | 29.0-31.5 / 30.1-32.5 | 36.9 / 36.0 | 38.0 / 37.9 | 35.3 / 34.9 | 674-667 / 877-1086 / 1185-1356 | 0.93-1.0 s |
+| our main, 240 BELLS slots (same prompts) | 72.5 | 70-71 | 69-71 | 62-64 | 398-401 / 389-390 / 366-367 | ~0.5 s |
+
+MTP3 acceptance: shallow ~52% of drafted tokens, depth 69-77%. Decode is about 2x slower than our BELLS stack
+(40 hot slots are 16% of the 256 experts each GPU owns; misses go over PCIe x8); prefill is 1.7-3.7x faster even
+without streaming prefill. Their published 2x 3090 numbers (104 decode, 2,752 prefill) need 84 hot slots and
+24 GB cards. Client local/results/q2x/vllm_depthcurve.py (same prompts as depthcurve2.py, usage-block token counts).

@@ -297,13 +297,12 @@ private:
     std::unique_ptr<moe_prefetch>  moe_pf;   // --moe-prefetch, independent of the cache
     std::unique_ptr<moe_stats>     moe_st;   // --moe-stats, measurement only
 
+    std::vector<int32_t> bells_routing_ids;
+
     // Second backend, and so a second CUDA stream, used only for BELLS expert copies. Held here
     // so it outlives the runtime that issues copies on it. Null unless BELLS_COPY_STREAM is set.
     ggml_backend_ptr bells_copy_backend;
     ggml_backend_ptr bells_l2_backend;
-
-    // bells_eval: scratch for reading all routing rows in one copy
-    std::vector<int32_t> bells_rb_span;
 
     llama_memory_ptr memory;
 
